@@ -1,6 +1,5 @@
 # Rmenu: A Simple dmenu-like Launcher for Windows
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/SynrgStudio/rmenu/rust.yml?branch=main)](https://github.com/SynrgStudio/rmenu/actions)
 [![Latest Release](https://img.shields.io/github/v/release/SynrgStudio/rmenu)](https://github.com/SynrgStudio/rmenu/releases/latest)
 [![License](https://img.shields.io/github/license/SynrgStudio/rmenu)](https://github.com/SynrgStudio/rmenu/blob/main/LICENSE)
 
