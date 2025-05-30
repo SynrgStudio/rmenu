@@ -7,9 +7,7 @@
 **Rmenu** is a lightweight and fast application launcher and menu generator for Windows, heavily inspired by `dmenu` from the suckless.org tools. It reads a list of items from standard input or command-line arguments, allows the user to efficiently search and select an item, and prints the selected item to standard output. This makes it a powerful component for scripting and creating custom workflows.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/SynrgStudio/rmenu/main/screenshots/rmenu_example.png" alt="Rmenu Screenshot" width="600"/>
-  <br/>
-  <em>(Add a nice screenshot of Rmenu in action here - replace the placeholder URL)</em>
+  <img src="https://raw.githubusercontent.com/SynrgStudio/rmenu/main/screenshots/rmenu_example.png" alt="NEED TO ADD SCREENSHOT :D" width="600"/>
 </p>
 
 ## Features
@@ -233,7 +231,7 @@ if ($selectedFile) {
 }
 ```
 
-*(For more detailed PowerShell examples, see `POWERSHELL_EXAMPLES.md` - You might want to create this file too!)*
+*(For more detailed PowerShell examples, see `POWERSHELL_EXAMPLES.md`)*
 
 ## Contributing
 
@@ -248,8 +246,3 @@ Contributions are welcome! Whether it's bug reports, feature requests, or code c
 7.  **Create a new Pull Request.**
 
 Please try to follow the existing code style and add comments where necessary. If you're adding a new feature, consider adding tests if applicable.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-*(You'll need to add a `LICENSE` file with the MIT license text if you haven't already).* 
