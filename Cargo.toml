@@ -1,0 +1,41 @@
+[package]
+name = "rmenu"
+version = "0.2.0"
+edition = "2021"
+description = "Un clon de dmenu para Windows, escrito en Rust"
+authors = ["Tu Nombre <tu.email@ejemplo.com>"]
+
+# Incluir archivos adicionales en el paquete
+include = [
+    "**/*.rs",
+    "Cargo.toml",
+    "config_example.ini",
+    "README.md",
+]
+
+[dependencies]
+windows = { version = "0.48.0", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_SystemServices",
+    "Win32_UI_Controls",
+    "Win32_Storage_FileSystem",
+] }
+dirs = "5.0.1"
+atty = "0.2"
+
+[build-dependencies]
+embed-resource = "2.2.0"
+
+[profile.release]
+strip = true        # Automatically strip symbols from the binary
+opt-level = 3       # Maximum optimization
+lto = true          # Enable link-time optimization
+codegen-units = 1   # Reduce parallel code generation units for better optimization
+
+[[bin]]
+name = "rmenu"
+path = "src/main.rs"
