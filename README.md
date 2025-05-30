@@ -6,7 +6,7 @@
 **Rmenu** is a lightweight and fast application launcher and menu generator for Windows, heavily inspired by `dmenu` from the suckless.org tools. It reads a list of items from standard input or command-line arguments, allows the user to efficiently search and select an item, and prints the selected item to standard output. This makes it a powerful component for scripting and creating custom workflows.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/SynrgStudio/rmenu/main/screenshots/rmenu_example.png" alt="NEED TO ADD SCREENSHOT :D" width="600"/>
+  <img src="https://raw.githubusercontent.com/SynrgStudio/rmenu/main/img.jpg" alt="NEED TO ADD SCREENSHOT :D" width="600"/>
 </p>
 
 ## Features
