@@ -28,13 +28,13 @@ Convertir `rmenu` en un launcher diario para Windows, rápido y predecible, con 
   - historial persistente,
   - Start Menu,
   - PATH.
-- Enter ejecuta target (`cmd /C start`).
+- Enter ejecuta target con backend nativo (`ShellExecuteW`) + fallback controlado a `cmd /C start` cuando aplica.
 - Modo `stdin/-e` sigue funcionando (estilo dmenu).
 
 ## Problemas conocidos
 
-- Índice se construye cada ejecución (sin cache versionada).
-- Blacklist de comandos CLI está hardcodeada.
+- Falta consolidar backend de lanzamiento con cobertura ampliada para casos edge de quoting/targets especiales.
+- `main.rs` todavía concentra UI Win32 (mantenibilidad limitada).
 - No hay metadatos visuales para distinguir duplicados de nombre.
 - No hay mediciones de performance formales.
 - Código centralizado en `src/main.rs` (mantenibilidad limitada).
@@ -285,6 +285,103 @@ Orden recomendado para empezar hoy:
   - [x] Reusar `fuzzy_score_precomputed_lower` para búsquedas case-insensitive.
   - [x] Implementar selección parcial top-K (sin ordenar todo) para datasets grandes.
 - [x] **T-014 README de performance con benchmark reproducible**
+
+## SPRINT 4 (deuda técnica prioritaria)
+
+- [x] **T-019 Corregir formato real del índice**
+  - [x] Migrar cache a JSON real (`%APPDATA%/rmenu/index.json`).
+  - [x] Serializar/deserializar con formato explícito y versionado.
+  - [x] Añadir migración/backward handling de cache anterior (TSV-like legacy).
+
+- [x] **T-020 Invalidez/refresh de cache por cambios del sistema**
+  - [x] Detectar cambios en Start Menu y PATH para invalidar cache.
+  - [x] Estrategia implementada: `mtime` roots + firma hash de PATH.
+  - [x] Soporte de refresh manual (`--reindex`) y refresh automático seguro.
+
+- [x] **T-021 Endurecer ejecución (salida de `cmd /C start`)**
+  - [x] Introducir backend nativo de lanzamiento (ShellExecuteW) para Windows.
+  - [x] Mantener fallback controlado solo donde sea necesario.
+  - [x] Cubrir casos base de quoting/URLs/shell-like fallback con tests.
+
+- [x] **T-022 Extraer UI Win32 de `main.rs`**
+  - [x] Mover message loop, paint y keyboard handling a `src/ui_win32.rs`.
+  - [x] Reducir `main.rs` a orquestación (config + dataset + arranque UI).
+  - [x] Definir contratos claros entre UI y core (`src/ranking.rs` + `ui_win32::run_ui(...)`).
+
+- [x] **T-023 Migración de render ANSI a Unicode**
+  - [x] Reemplazar camino `TextOutA` por render wide (`TextOutW`).
+  - [x] Mantener render de input/lista/hints en UTF-16.
+  - [x] Eliminar camino ANSI de dibujo en UI Win32.
+
+- [x] **T-024 Métricas de UX real (latencia visible)**
+  - [x] Medir `time_to_window_visible_ms`.
+  - [x] Medir `time_to_first_paint_ms`.
+  - [x] Medir `time_to_input_ready_ms` (primer frame interactivo).
+  - [x] Exponer estos valores en `--metrics` y documentar metodología.
+
+- [x] **T-025 Higiene documental de reportes de auditoría**
+  - [x] Mover snapshot histórico a `docs/audits/codebase-report-2026-04-22.md`.
+  - [x] Dejar `codebase-report.md` como puntero explícito (no fuente de estado actual).
+  - [x] Mantener README/plan como fuentes vivas de estado.
+
+## ESTADO DE PRODUCCIÓN ACTUAL (SNAPSHOT PARA REINICIO DE CHAT)
+
+Esta sección es la fuente de verdad rápida para retomar trabajo en un chat nuevo.
+
+### Qué está listo y estable (core)
+
+- Launcher mode por defecto operativo (sin `-e` / sin stdin).
+- Script mode (`-e` y stdin) operativo.
+- Fuentes activas: History + Start Menu + PATH.
+- Ranking fuzzy v1 estable con boosts por fuente y blacklist configurable.
+- Matching mantiene compatibilidad por nombre técnico de ejecutable (`mspaint`, `powershell`) aunque el label visual sea amigable.
+- Fast-path de ranking: evita cálculo secundario de target cuando el match del label ya es fuerte (menor costo por query).
+- Scroll/selección de lista estable (selección visible).
+- Render en dos columnas (label a izquierda, hint de ruta a derecha).
+- Label visual enriquecido para `.exe` (usa `FileDescription` cuando está disponible; ej. `Paint`, `PowerShell`) y fallback por alias para casos `WindowsApps` (`mspaint` -> `Paint`).
+- Render de texto en UI migrado a Unicode (`TextOutW`, UTF-16) para nombres/rutas no ASCII.
+- Métricas UX reales expuestas en `--metrics` (`time_to_window_visible_ms`, `time_to_first_paint_ms`, `time_to_input_ready_ms`).
+- Modo de medición UI evita focus/sleep no esenciales para reducir ruido de `--metrics`.
+- Historial persistente operativo.
+- Cache de índice operativo (`%APPDATA%/rmenu/index.json`, JSON versionado + firma de entorno).
+- Backend de launch nativo operativo (`ShellExecuteW`) con fallback controlado.
+- Diagnóstico operativo:
+  - `--debug-ranking <query>`
+  - `--metrics` (incluye latencias UX: window visible / first paint / input-ready)
+  - `--reindex` (refresh manual de índice)
+- Módulos extraídos:
+  - `src/app_state.rs`
+  - `src/fuzzy.rs`
+  - `src/sources/mod.rs`
+  - `src/launcher.rs`
+  - `src/ranking.rs`
+  - `src/ui_win32.rs`
+
+### Qué se terminó en roadmap
+
+- Sprint 1: T-001 a T-007 completados.
+- Sprint 2: T-008 a T-011 completados.
+- Sprint 3: T-012 a T-014 completados.
+- Sprint 4: T-019, T-020, T-021, T-022, T-023, T-024 y T-025 completados.
+
+### Deuda técnica prioritaria (orden recomendado Sprint 4)
+
+1. Consolidar benchmarks periódicos en README sin números sintéticos (usar resultados medidos por máquina).
+
+### Decisiones de producto vigentes (no romper)
+
+- No meter hotkey/daemon todavía (queda pospuesto deliberadamente).
+- Priorizar latencia/estabilidad/ranking antes de features extra.
+- Mantener `README + plan` alineados con implementación real.
+- Tratar `codebase-report.md` como puntero histórico; los snapshots viven en `docs/audits/`.
+
+### Comandos de verificación al retomar
+
+- `cargo check`
+- `cargo test`
+- `rmenu.exe --metrics`
+- `rmenu.exe --debug-ranking pow`
+- `rmenu.exe --reindex`
 
 ## BLOQUEADO / POSPUESTO (intencional)
 

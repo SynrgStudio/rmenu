@@ -355,6 +355,7 @@ pub struct CmdOptions {
     pub silent: bool,
     pub debug_ranking: Option<String>,
     pub metrics: bool,
+    pub reindex: bool,
     pub layout: Option<String>,
     pub cli_width_percent: Option<f32>,
     pub cli_max_width: Option<i32>,
@@ -407,6 +408,7 @@ pub fn parse_args() -> CmdOptions {
                 if i + 1 < args.len() { options.debug_ranking = Some(args[i + 1].clone()); i += 1; }
             }
             "--metrics" => { options.metrics = true; }
+            "--reindex" => { options.reindex = true; }
             "-h" | "--help" => { print_help(); std::process::exit(0); }
             "--layout" => {
                 if i + 1 < args.len() { options.layout = Some(args[i + 1].to_lowercase().clone()); i += 1; }
@@ -455,7 +457,8 @@ pub fn print_help() {
     println!("  -c, --config <PATH>     Ruta al archivo de configuración (config.ini).");
     println!("  -s, --silent            Suprime todos los mensajes de error/diagnóstico (stderr).");
     println!("  --debug-ranking <QUERY> Imprime ranking (fuzzy + source boost) para depuración y sale.");
-    println!("  --metrics               Imprime métricas de startup/search/dataset y sale.");
+    println!("  --metrics               Imprime métricas de startup/UI/search/dataset y sale.");
+    println!("  --reindex               Fuerza rebuild del índice (ignora cache en esta ejecución).");
     println!("  -h, --help              Muestra esta ayuda.");
     println!("");
     println!("Opciones de Geometría y Layout (sobrescriben config.ini):");

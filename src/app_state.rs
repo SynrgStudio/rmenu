@@ -12,6 +12,9 @@ pub struct LauncherItem {
     pub label: String,
     pub label_lc: String,
     pub label_compact: String,
+    pub target_name: String,
+    pub target_name_lc: String,
+    pub target_name_compact: String,
     pub target: String,
     pub source: LauncherSource,
 }
@@ -24,10 +27,26 @@ impl LauncherItem {
             .filter(|ch| ch.is_ascii_alphanumeric())
             .collect::<String>();
 
+        let target_name = std::path::Path::new(&target)
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&target)
+            .to_string();
+        let target_name_lc = target_name.to_lowercase();
+        let target_name_compact = target_name_lc
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .collect::<String>();
+
         Self {
             label,
             label_lc,
             label_compact,
+            target_name,
+            target_name_lc,
+            target_name_compact,
             target,
             source,
         }

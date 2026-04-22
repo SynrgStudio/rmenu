@@ -1,0 +1,213 @@
+﻿rmenu unified audit report
+Generated: 2026-04-22 09:36:56
+Repo root: D:\rmenu
+Metrics runs: 1
+
+============================================================
+Host hardware information
+============================================================
+Machine: ASUS System Product Name
+CPU: AMD Ryzen 7 5800X 8-Core Processor
+CPU cores/logical: 8/16
+Installed RAM (GB): 31.92
+GPU(s):
+  - NVIDIA GeForce RTX 3090 | Driver: 32.0.15.9186
+Physical memory modules:
+  - 16 GB @ 3600 MHz
+  - 16 GB @ 3600 MHz
+Disk volumes:
+  - C: size=476.11GB free=43.93GB FS=NTFS
+  - D: size=476.92GB free=7.44GB FS=NTFS
+  - G: size=931.51GB free=607.95GB FS=NTFS
+
+============================================================
+Toolchain info
+============================================================
+> rustc --version
+rustc 1.90.0 (1159e78c4 2025-09-14)
+exit_code=0
+> cargo --version
+cargo 1.90.0 (840b83a10 2025-07-30)
+exit_code=0
+
+============================================================
+Build & test audits
+============================================================
+> cargo check
+warning: rmenu@0.2.0: Copiando config_example.ini al directorio de salida
+exit_code=1
+
+> cargo test
+warning: rmenu@0.2.0: Copiando config_example.ini al directorio de salida
+exit_code=1
+
+> cargo build --release
+warning: rmenu@0.2.0: Copiando config_example.ini al directorio de salida
+exit_code=1
+
+
+============================================================
+CLI diagnostics audits
+============================================================
+> D:\rmenu\target\release\rmenu.exe --help
+rmenu - Un lanzador de men├║s simple al estilo dmenu para Windows
+Uso: rmenu [OPCIONES]
+
+Opciones de Entrada:
+  -e, --elements <LIST>   Lista de elementos (delimitador en config.ini, defecto: ',').
+                            Si no se provee, rmenu lee de stdin (uno por l├¡nea).
+  -p, --prompt <TEXT>     Texto a mostrar como prompt.
+
+Opciones de Configuraci├│n y Comportamiento:
+  -c, --config <PATH>     Ruta al archivo de configuraci├│n (config.ini).
+  -s, --silent            Suprime todos los mensajes de error/diagn├│stico (stderr).
+  --debug-ranking <QUERY> Imprime ranking (fuzzy + source boost) para depuraci├│n y sale.
+  --metrics               Imprime m├⌐tricas de startup/UI/search/dataset y sale.
+  --reindex               Fuerza rebuild del ├¡ndice (ignora cache en esta ejecuci├│n).
+  -h, --help              Muestra esta ayuda.
+
+Opciones de Geometr├¡a y Layout (sobrescriben config.ini):
+  --layout <NAME>         Aplica un layout predefinido. Opciones:
+                            custom, top-fullwidth, bottom-fullwidth, center-dialog,
+                            top-left, top-right, bottom-left, bottom-right.
+                            Si es 'custom' o se omite, se usan los valores detallados.
+  --x-pos <POS>           Posici├│n X. Ej: '100' (p├¡xeles) o 'r0.5' (relativo).
+  --y-pos <POS>           Posici├│n Y. Ej: '0' o 'r0.3'.
+  --width-percent <FLOAT> Ancho como porcentaje de pantalla (0.0-1.0).
+  --max-width <PX>        Ancho m├íximo en p├¡xeles.
+  --height <PX>           Altura de la barra de entrada en p├¡xeles.
+  --item-height <PX>      Altura de cada ├¡tem de la lista en p├¡xeles.
+  --padding <PX>          Relleno interno en p├¡xeles.
+  --border-width <PX>     Ancho del borde en p├¡xeles.
+
+Para m├ís detalles sobre colores, fuentes y comportamiento, ver el archivo config.ini.
+Ubicaci├│n por defecto: %APPDATA%\rmenu\config.ini
+exit_code=0
+
+> D:\rmenu\target\release\rmenu.exe --debug-ranking pow
+Debug ranking for query: 'pow'
+Dataset size: 0 | case_sensitive=false | launcher_mode=false
+exit_code=0
+
+> D:\rmenu\target\release\rmenu.exe --debug-ranking paint
+Debug ranking for query: 'paint'
+Dataset size: 0 | case_sensitive=false | launcher_mode=false
+exit_code=0
+
+> D:\rmenu\target\release\rmenu.exe --debug-ranking code
+Debug ranking for query: 'code'
+Dataset size: 0 | case_sensitive=false | launcher_mode=false
+exit_code=0
+
+
+============================================================
+Metrics audits
+============================================================
+Run #1
+rmenu metrics
+- startup_prepare_ms: 2
+- time_to_window_visible_ms: 32
+- time_to_first_paint_ms: 36
+- time_to_input_ready_ms: 36
+- search_p95_ms: 0.006
+- dataset_items: 0
+- dataset_estimated_bytes: 0
+- index_cache_bytes: 130468
+exit_code=0
+
+Aggregated metrics
+- startup_prepare_ms: min=2 p50=2 avg=2.000 p95=2 max=2
+- time_to_window_visible_ms: min=32 p50=32 avg=32.000 p95=32 max=32
+- time_to_first_paint_ms: min=36 p50=36 avg=36.000 p95=36 max=36
+- time_to_input_ready_ms: min=36 p50=36 avg=36.000 p95=36 max=36
+- search_p95_ms: min=0.006 p50=0.006 avg=0.006 p95=0.006 max=0.006
+- dataset_items: min=0 p50=0 avg=0.000 p95=0 max=0
+- dataset_estimated_bytes: min=0 p50=0 avg=0.000 p95=0 max=0
+- index_cache_bytes: min=130468 p50=130468 avg=130,468.000 p95=130468 max=130468
+
+============================================================
+Index/cache audit
+============================================================
+cache_path=C:\Users\dnaon\AppData\Roaming\rmenu\index.json
+cache_exists=true
+cache_version=5
+cache_generated_at_unix_ms=1776859336367
+cache_item_count=1083
+cache_has_env_signature=True
+
+============================================================
+Resource snapshots during audit
+============================================================
+[start] 2026-04-22T09:37:04
+- process_count: 293
+- cpu_load_pct: 16
+- memory_used_mb: 22111.73
+- memory_free_mb: 10569.82
+- disk_time_pct: 0.01
+- disk_queue: 0
+- gpu_util_pct: 2.97
+- top_cpu_processes:
+    - thorium (pid=9876, cpu=8617.875, ws_mb=379)
+    - thorium (pid=11184, cpu=4195.703, ws_mb=482.6)
+    - Discord (pid=1840, cpu=2314.594, ws_mb=453)
+    - Fusion360 (pid=31976, cpu=1664.047, ws_mb=603.5)
+    - bambu-studio (pid=8872, cpu=1608.062, ws_mb=91.8)
+
+[post-build] 2026-04-22T09:37:12
+- process_count: 293
+- cpu_load_pct: 15
+- memory_used_mb: 22280.48
+- memory_free_mb: 10401.07
+- disk_time_pct: 0.03
+- disk_queue: 0
+- gpu_util_pct: 52.6
+- top_cpu_processes:
+    - thorium (pid=9876, cpu=8618.953, ws_mb=423.2)
+    - thorium (pid=11184, cpu=4195.797, ws_mb=481.1)
+    - Discord (pid=1840, cpu=2314.688, ws_mb=453)
+    - Fusion360 (pid=31976, cpu=1664.391, ws_mb=603.5)
+    - bambu-studio (pid=8872, cpu=1608.203, ws_mb=91.8)
+
+[post-metrics] 2026-04-22T09:37:20
+- process_count: 292
+- cpu_load_pct: 7
+- memory_used_mb: 22096.49
+- memory_free_mb: 10585.06
+- disk_time_pct: 0.09
+- disk_queue: 0
+- gpu_util_pct: 69.92
+- top_cpu_processes:
+    - thorium (pid=9876, cpu=8619.781, ws_mb=408.7)
+    - thorium (pid=11184, cpu=4195.875, ws_mb=480.9)
+    - Discord (pid=1840, cpu=2314.75, ws_mb=453)
+    - Fusion360 (pid=31976, cpu=1664.609, ws_mb=603.6)
+    - bambu-studio (pid=8872, cpu=1608.203, ws_mb=91.8)
+
+[end] 2026-04-22T09:37:26
+- process_count: 292
+- cpu_load_pct: 18
+- memory_used_mb: 22119.29
+- memory_free_mb: 10562.26
+- disk_time_pct: 0.01
+- disk_queue: 0
+- gpu_util_pct: 67.68
+- top_cpu_processes:
+    - thorium (pid=9876, cpu=8620.234, ws_mb=408.8)
+    - thorium (pid=11184, cpu=4195.938, ws_mb=480.9)
+    - Discord (pid=1840, cpu=2314.766, ws_mb=453)
+    - Fusion360 (pid=31976, cpu=1664.641, ws_mb=603.7)
+    - bambu-studio (pid=8872, cpu=1608.219, ws_mb=91.8)
+
+
+============================================================
+Audit summary
+============================================================
+Total checks: 12
+Passed: 9
+Failed: 3
+
+Failed checks:
+- cargo check: exit=1
+- cargo test: exit=1
+- cargo build --release: exit=1
+
