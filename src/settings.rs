@@ -11,6 +11,7 @@ pub struct RmenuConfig {
     pub dimensions: DimensionConfig,
     pub font: FontConfig,
     pub behavior: BehaviorConfig,
+    pub launcher: LauncherConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +51,29 @@ pub struct BehaviorConfig {
     pub element_delimiter: char,
 }
 
+#[derive(Debug, Clone)]
+pub struct LauncherConfig {
+    pub launcher_mode_default: bool,
+    pub enable_history: bool,
+    pub enable_start_menu: bool,
+    pub enable_path: bool,
+    pub history_max_items: usize,
+    pub source_boost_history: i64,
+    pub source_boost_start_menu: i64,
+    pub source_boost_path: i64,
+    pub blacklist_path_commands: Vec<String>,
+}
+
+fn default_blacklist_path_commands() -> Vec<String> {
+    vec![
+        "powercfg", "where", "whoami", "icacls", "takeown", "tasklist", "taskkill", "wevtutil",
+        "sfc", "dism", "gpupdate", "bcdedit", "reg", "sc", "netsh", "wmic",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 // Helper function to create COLORREF from R, G, B components
 fn rgb_to_colorref(r: u8, g: u8, b: u8) -> COLORREF {
     COLORREF((b as u32) << 16 | (g as u32) << 8 | (r as u32))
@@ -86,6 +110,17 @@ impl Default for RmenuConfig {
                 instant_selection: false,
                 max_items: 10, 
                 element_delimiter: ',',
+            },
+            launcher: LauncherConfig {
+                launcher_mode_default: true,
+                enable_history: true,
+                enable_start_menu: true,
+                enable_path: true,
+                history_max_items: 300,
+                source_boost_history: 650,
+                source_boost_start_menu: 480,
+                source_boost_path: 0,
+                blacklist_path_commands: default_blacklist_path_commands(),
             },
         }
     }
@@ -192,7 +227,21 @@ impl RmenuConfig {
         s.push_str(&format!("case_sensitive = {}\n", self.behavior.case_sensitive));
         s.push_str(&format!("instant_selection = {}\n", self.behavior.instant_selection));
         s.push_str(&format!("max_items = {}\n", self.behavior.max_items));
-        s.push_str(&format!("element_delimiter = {}\n", self.behavior.element_delimiter));
+        s.push_str(&format!("element_delimiter = {}\n\n", self.behavior.element_delimiter));
+
+        s.push_str("[Launcher]\n");
+        s.push_str(&format!("launcher_mode_default = {}\n", self.launcher.launcher_mode_default));
+        s.push_str(&format!("enable_history = {}\n", self.launcher.enable_history));
+        s.push_str(&format!("enable_start_menu = {}\n", self.launcher.enable_start_menu));
+        s.push_str(&format!("enable_path = {}\n", self.launcher.enable_path));
+        s.push_str(&format!("history_max_items = {}\n", self.launcher.history_max_items));
+        s.push_str(&format!("source_boost_history = {}\n", self.launcher.source_boost_history));
+        s.push_str(&format!("source_boost_start_menu = {}\n", self.launcher.source_boost_start_menu));
+        s.push_str(&format!("source_boost_path = {}\n", self.launcher.source_boost_path));
+        s.push_str(&format!(
+            "blacklist_path_commands = {}\n",
+            self.launcher.blacklist_path_commands.join(",")
+        ));
         
         s
     }
@@ -256,6 +305,23 @@ impl RmenuConfig {
             if let Some(val) = behavior_props.get("max_items") { config.behavior.max_items = val.parse().unwrap_or(config.behavior.max_items); }
             if let Some(val) = behavior_props.get("element_delimiter") { config.behavior.element_delimiter = val.chars().next().unwrap_or(config.behavior.element_delimiter); }
         }
+
+        if let Some(launcher_props) = properties.get("Launcher") {
+            if let Some(val) = launcher_props.get("launcher_mode_default") { config.launcher.launcher_mode_default = val.parse().unwrap_or(config.launcher.launcher_mode_default); }
+            if let Some(val) = launcher_props.get("enable_history") { config.launcher.enable_history = val.parse().unwrap_or(config.launcher.enable_history); }
+            if let Some(val) = launcher_props.get("enable_start_menu") { config.launcher.enable_start_menu = val.parse().unwrap_or(config.launcher.enable_start_menu); }
+            if let Some(val) = launcher_props.get("enable_path") { config.launcher.enable_path = val.parse().unwrap_or(config.launcher.enable_path); }
+            if let Some(val) = launcher_props.get("history_max_items") { config.launcher.history_max_items = val.parse().unwrap_or(config.launcher.history_max_items); }
+            if let Some(val) = launcher_props.get("source_boost_history") { config.launcher.source_boost_history = val.parse().unwrap_or(config.launcher.source_boost_history); }
+            if let Some(val) = launcher_props.get("source_boost_start_menu") { config.launcher.source_boost_start_menu = val.parse().unwrap_or(config.launcher.source_boost_start_menu); }
+            if let Some(val) = launcher_props.get("source_boost_path") { config.launcher.source_boost_path = val.parse().unwrap_or(config.launcher.source_boost_path); }
+            if let Some(val) = launcher_props.get("blacklist_path_commands") {
+                let parsed = parse_csv_list(val);
+                if !parsed.is_empty() {
+                    config.launcher.blacklist_path_commands = parsed;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -287,6 +353,8 @@ pub struct CmdOptions {
     pub prompt: Option<String>,
     pub config_path: Option<String>,
     pub silent: bool,
+    pub debug_ranking: Option<String>,
+    pub metrics: bool,
     pub layout: Option<String>,
     pub cli_width_percent: Option<f32>,
     pub cli_max_width: Option<i32>,
@@ -296,6 +364,14 @@ pub struct CmdOptions {
     pub cli_y_pos: Option<String>,
     pub cli_padding: Option<i32>,
     pub cli_border_width: Option<i32>,
+}
+
+fn parse_csv_list(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .collect()
 }
 
 fn parse_color_hex(hex: &str) -> io::Result<COLORREF> {
@@ -327,6 +403,10 @@ pub fn parse_args() -> CmdOptions {
                 if i + 1 < args.len() { options.config_path = Some(args[i + 1].clone()); i += 1; }
             }
             "-s" | "--silent" => { options.silent = true; }
+            "--debug-ranking" => {
+                if i + 1 < args.len() { options.debug_ranking = Some(args[i + 1].clone()); i += 1; }
+            }
+            "--metrics" => { options.metrics = true; }
             "-h" | "--help" => { print_help(); std::process::exit(0); }
             "--layout" => {
                 if i + 1 < args.len() { options.layout = Some(args[i + 1].to_lowercase().clone()); i += 1; }
@@ -374,6 +454,8 @@ pub fn print_help() {
     println!("Opciones de Configuración y Comportamiento:");
     println!("  -c, --config <PATH>     Ruta al archivo de configuración (config.ini).");
     println!("  -s, --silent            Suprime todos los mensajes de error/diagnóstico (stderr).");
+    println!("  --debug-ranking <QUERY> Imprime ranking (fuzzy + source boost) para depuración y sale.");
+    println!("  --metrics               Imprime métricas de startup/search/dataset y sale.");
     println!("  -h, --help              Muestra esta ayuda.");
     println!("");
     println!("Opciones de Geometría y Layout (sobrescriben config.ini):");

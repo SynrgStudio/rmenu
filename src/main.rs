@@ -1,15 +1,19 @@
+mod app_state;
+mod fuzzy;
+mod launcher;
 mod settings;
+mod sources;
 
 use atty;
 use std::{
     ffi::OsStr,
+    io::{self, Read},
     iter::once,
     os::windows::ffi::OsStrExt,
+    path::Path,
     sync::Mutex,
     thread::sleep,
-    time::Duration,
-    path::Path,
-    io::{self, Read},
+    time::{Duration, Instant},
 };
 use windows::{
     core::PCWSTR,
@@ -39,17 +43,11 @@ use windows::{
     },
 };
 
-use settings::{RmenuConfig, CmdOptions, parse_args};
-
-#[derive(Debug, Default, Clone)]
-struct AppState {
-    current_input: String,
-    selected_index: usize,
-    matching_items: Vec<String>,
-    all_items: Vec<String>,
-    prompt: Option<String>,
-}
-
+use app_state::{AppState, LauncherItem, LauncherSource, ensure_selection_visible, source_boost};
+use fuzzy::{compact_lower_alnum, fuzzy_score, fuzzy_score_precomputed_lower};
+use launcher::{abbreviate_target, centered_text_y, compact_target_hint, launch_target, truncate_with_ellipsis_end};
+use settings::{CmdOptions, RmenuConfig, parse_args};
+use sources::{index_cache_size_bytes, load_launcher_items, persist_history_entry};
 static APP_STATE: Mutex<Option<AppState>> = Mutex::new(None);
 static CONFIG: Mutex<Option<RmenuConfig>> = Mutex::new(None);
 
@@ -261,26 +259,33 @@ unsafe extern "system" fn window_proc(
                 let old_font = SelectObject(hdc, font);
                 
                 let current_padding = config.dimensions.padding;
+                let char_w = (config.font.size / 2).max(6);
+
+                let input_bar_actual_height = config.dimensions.height;
+                let input_text_y = centered_text_y(0, input_bar_actual_height, config.font.size);
 
                 let mut x_offset = current_padding;
                 if let Some(prompt) = &app_state.prompt {
                     let prompt_text = format!("{}: ", prompt);
-                    TextOutA(hdc, x_offset, current_padding, prompt_text.as_bytes());
-                    x_offset += prompt_text.len() as i32 * (config.font.size / 2);
+                    TextOutA(hdc, x_offset, input_text_y, prompt_text.as_bytes());
+                    x_offset += prompt_text.len() as i32 * char_w;
                 }
                 
                 if !app_state.current_input.is_empty() {
-                    TextOutA(hdc, x_offset, current_padding, app_state.current_input.as_bytes());
+                    TextOutA(hdc, x_offset, input_text_y, app_state.current_input.as_bytes());
                 }
                 
                 let current_item_height = config.dimensions.item_height;
-                let input_bar_actual_height = config.dimensions.height;
+                let max_items_to_display = config.behavior.max_items.max(1) as usize;
 
-                let max_items_to_display = config.behavior.max_items.min(app_state.matching_items.len() as i32);
-                for (i, item) in app_state.matching_items.iter().take(max_items_to_display as usize).enumerate() {
-                    let y = input_bar_actual_height + (current_item_height * i as i32);
+                let visible_end = (app_state.scroll_offset + max_items_to_display)
+                    .min(app_state.matching_items.len());
+
+                for (visible_row, item_index) in (app_state.scroll_offset..visible_end).enumerate() {
+                    let item = &app_state.matching_items[item_index];
+                    let y = input_bar_actual_height + (current_item_height * visible_row as i32);
                     
-                    if i == app_state.selected_index {
+                    if item_index == app_state.selected_index {
                         SetBkColor(hdc, config.colors.selected_background);
                         SetTextColor(hdc, config.colors.selected_foreground);
                         let select_rect = RECT { left: 0, top: y, right: rect.right, bottom: y + current_item_height };
@@ -290,7 +295,39 @@ unsafe extern "system" fn window_proc(
                         SetBkColor(hdc, config.colors.background);
                         SetTextColor(hdc, config.colors.foreground);
                     }
-                    TextOutA(hdc, current_padding, y + current_padding / 2, item.as_bytes());
+
+                    let min_gap = char_w * 2;
+                    let left_x = current_padding;
+                    let row_right_bound = rect.right - current_padding;
+
+                    let mut right_text = compact_target_hint(&item.target);
+                    let mut right_chars = right_text.chars().count() as i32;
+                    let mut right_w = right_chars * char_w;
+                    let mut right_x = row_right_bound - right_w;
+
+                    let max_left_w = (right_x - min_gap - left_x).max(char_w * 8);
+                    let left_max_chars = (max_left_w / char_w).max(1) as usize;
+                    let left_text = truncate_with_ellipsis_end(&item.label, left_max_chars);
+                    let left_w = left_text.chars().count() as i32 * char_w;
+
+                    if right_x <= left_x + left_w + min_gap {
+                        let available_right_w = row_right_bound - (left_x + left_w + min_gap);
+                        let available_right_chars = (available_right_w / char_w).max(0) as usize;
+                        if available_right_chars >= 4 {
+                            right_text = abbreviate_target(&right_text, available_right_chars);
+                            right_chars = right_text.chars().count() as i32;
+                            right_w = right_chars * char_w;
+                            right_x = row_right_bound - right_w;
+                        } else {
+                            right_text.clear();
+                        }
+                    }
+
+                    let item_text_y = centered_text_y(y, current_item_height, config.font.size);
+                    TextOutA(hdc, left_x, item_text_y, left_text.as_bytes());
+                    if !right_text.is_empty() {
+                        TextOutA(hdc, right_x, item_text_y, right_text.as_bytes());
+                    }
                 }
                 
                 SelectObject(hdc, old_font);
@@ -307,19 +344,49 @@ unsafe extern "system" fn window_proc(
                 } else if key_code == VK_RETURN.0 as i32 {
                     if !app_state.matching_items.is_empty() && app_state.selected_index < app_state.matching_items.len() {
                         let selected = app_state.matching_items[app_state.selected_index].clone();
-                        println!("{}", selected);
-                    } else if app_state.all_items.is_empty() && !app_state.current_input.is_empty() {
-                        println!("{}", app_state.current_input);
+                        if app_state.launcher_mode {
+                            if let Err(e) = launch_target(&selected.target) {
+                                if !app_state.silent_mode {
+                                    eprintln!("Error launching target '{}': {}", selected.target, e);
+                                }
+                            } else {
+                                persist_history_entry(&selected.target, app_state.silent_mode, app_state.history_max_items);
+                            }
+                        } else {
+                            println!("{}", selected.label);
+                        }
+                    } else if !app_state.current_input.is_empty() {
+                        if app_state.launcher_mode {
+                            if let Err(e) = launch_target(&app_state.current_input) {
+                                if !app_state.silent_mode {
+                                    eprintln!("Error launching input '{}': {}", app_state.current_input, e);
+                                }
+                            } else {
+                                persist_history_entry(&app_state.current_input, app_state.silent_mode, app_state.history_max_items);
+                            }
+                        } else if app_state.all_items.is_empty() {
+                            println!("{}", app_state.current_input);
+                        }
                     }
                     PostQuitMessage(0);
                 } else if key_code == VK_DOWN.0 as i32 {
                     if !app_state.matching_items.is_empty() {
                         app_state.selected_index = (app_state.selected_index + 1) % app_state.matching_items.len();
+                        let max_visible = {
+                            let config_guard = CONFIG.lock().unwrap();
+                            config_guard.as_ref().map_or(10usize, |c| c.behavior.max_items.max(1) as usize)
+                        };
+                        ensure_selection_visible(app_state, max_visible);
                         InvalidateRect(hwnd, None, true);
                     }
                 } else if key_code == VK_UP.0 as i32 {
                     if !app_state.matching_items.is_empty() {
                         app_state.selected_index = (app_state.selected_index + app_state.matching_items.len() - 1) % app_state.matching_items.len();
+                        let max_visible = {
+                            let config_guard = CONFIG.lock().unwrap();
+                            config_guard.as_ref().map_or(10usize, |c| c.behavior.max_items.max(1) as usize)
+                        };
+                        ensure_selection_visible(app_state, max_visible);
                         InvalidateRect(hwnd, None, true);
                     }
                 } else if key_code == VK_BACK.0 as i32 {
@@ -331,7 +398,7 @@ unsafe extern "system" fn window_proc(
                     }
                 } else if key_code == VK_TAB.0 as i32 {
                     if !app_state.matching_items.is_empty() && app_state.selected_index < app_state.matching_items.len() {
-                        app_state.current_input = app_state.matching_items[app_state.selected_index].clone();
+                        app_state.current_input = app_state.matching_items[app_state.selected_index].label.clone();
                         update_matching_items_refactored(app_state);
                         InvalidateRect(hwnd, None, true);
                     }
@@ -364,25 +431,159 @@ unsafe extern "system" fn window_proc(
     }
 }
 
+#[derive(Debug, Clone)]
+struct RankedItem {
+    item: LauncherItem,
+    fuzzy_score: i64,
+    source_boost: i64,
+    total_score: i64,
+}
+
+const PARTIAL_TOPK_THRESHOLD: usize = 1200;
+const PARTIAL_TOPK_LIMIT: usize = 400;
+
+fn rank_compare_desc(a: &RankedItem, b: &RankedItem) -> std::cmp::Ordering {
+    b.total_score
+        .cmp(&a.total_score)
+        .then_with(|| a.item.label.cmp(&b.item.label))
+}
+
+fn source_name(source: LauncherSource) -> &'static str {
+    match source {
+        LauncherSource::Direct => "direct",
+        LauncherSource::History => "history",
+        LauncherSource::StartMenu => "start_menu",
+        LauncherSource::Path => "path",
+    }
+}
+
+fn rank_items(app_state: &AppState, query: &str, case_sensitive: bool) -> Vec<RankedItem> {
+    let query_norm = if case_sensitive {
+        String::new()
+    } else {
+        query.to_lowercase()
+    };
+    let query_compact = if case_sensitive {
+        String::new()
+    } else {
+        compact_lower_alnum(&query_norm)
+    };
+
+    let mut ranked: Vec<RankedItem> = app_state
+        .all_items
+        .iter()
+        .filter_map(|item| {
+            let fuzzy = if case_sensitive {
+                fuzzy_score(query, &item.label, true)
+            } else {
+                fuzzy_score_precomputed_lower(
+                    &query_norm,
+                    &query_compact,
+                    &item.label_lc,
+                    &item.label_compact,
+                )
+            };
+
+            if fuzzy <= 0 {
+                return None;
+            }
+            let boost = source_boost(app_state, item.source);
+            let total = fuzzy + boost;
+            Some(RankedItem {
+                item: item.clone(),
+                fuzzy_score: fuzzy,
+                source_boost: boost,
+                total_score: total,
+            })
+        })
+        .collect();
+
+    if ranked.len() > PARTIAL_TOPK_THRESHOLD {
+        let keep = PARTIAL_TOPK_LIMIT.min(ranked.len());
+        ranked.select_nth_unstable_by(keep - 1, rank_compare_desc);
+        ranked.truncate(keep);
+    }
+
+    ranked.sort_unstable_by(rank_compare_desc);
+
+    ranked
+}
+
 fn update_matching_items_refactored(app_state: &mut AppState) {
     let config_guard = CONFIG.lock().unwrap();
     let case_sensitive = config_guard.as_ref().map_or(false, |c| c.behavior.case_sensitive);
+    let max_visible_items = config_guard
+        .as_ref()
+        .map_or(10usize, |c| c.behavior.max_items.max(1) as usize);
     drop(config_guard);
 
     if app_state.current_input.is_empty() {
         app_state.matching_items = app_state.all_items.clone();
-    } else {
-        app_state.matching_items = app_state.all_items.iter().filter(|item| {
-            if case_sensitive {
-                item.contains(&app_state.current_input)
-            } else {
-                item.to_lowercase().contains(&app_state.current_input.to_lowercase())
-            }
-        }).cloned().collect();
+        ensure_selection_visible(app_state, max_visible_items);
+        return;
     }
+
+    let ranked = rank_items(app_state, &app_state.current_input, case_sensitive);
+    app_state.matching_items = ranked.into_iter().map(|entry| entry.item).collect();
+    ensure_selection_visible(app_state, max_visible_items);
+}
+
+fn p95_duration_ms(samples: &mut [u128]) -> u128 {
+    if samples.is_empty() {
+        return 0;
+    }
+    samples.sort_unstable();
+    let idx = ((samples.len() as f64 * 0.95).ceil() as usize)
+        .saturating_sub(1)
+        .min(samples.len() - 1);
+    samples[idx]
+}
+
+fn estimated_dataset_bytes(items: &[LauncherItem]) -> usize {
+    items
+        .iter()
+        .map(|item| item.label.len() + item.target.len())
+        .sum()
+}
+
+fn print_metrics(app_state: &AppState, case_sensitive: bool, startup_ms: u128) {
+    let mut queries: Vec<String> = vec![
+        "pow".to_string(),
+        "not".to_string(),
+        "calc".to_string(),
+        "code".to_string(),
+        "expl".to_string(),
+    ];
+
+    for label in app_state.all_items.iter().take(15).map(|item| item.label.as_str()) {
+        let q: String = label.chars().take(3).collect::<String>().to_lowercase();
+        if q.len() >= 2 {
+            queries.push(q);
+        }
+    }
+
+    let mut search_samples_ms: Vec<u128> = Vec::new();
+    for query in queries {
+        let t0 = Instant::now();
+        let _ = rank_items(app_state, &query, case_sensitive);
+        search_samples_ms.push(t0.elapsed().as_micros());
+    }
+
+    let p95_us = p95_duration_ms(&mut search_samples_ms);
+    let p95_ms = p95_us as f64 / 1000.0;
+    let cache_size = index_cache_size_bytes().unwrap_or(0);
+
+    println!("rmenu metrics");
+    println!("- startup_prepare_ms: {}", startup_ms);
+    println!("- search_p95_ms: {:.3}", p95_ms);
+    println!("- dataset_items: {}", app_state.all_items.len());
+    println!("- dataset_estimated_bytes: {}", estimated_dataset_bytes(&app_state.all_items));
+    println!("- index_cache_bytes: {}", cache_size);
 }
 
 fn main() -> windows::core::Result<()> {
+    let startup_t0 = Instant::now();
+
     let cmd_options: CmdOptions = parse_args();
     let silent_mode = cmd_options.silent; // Conservar silent_mode por si se usa para errores genuinos
 
@@ -406,35 +607,105 @@ fn main() -> windows::core::Result<()> {
         drop(config_global_guard);
     }
     
-    let mut initial_elements: Vec<String> = Vec::new();
+    let launcher_config = app_config.launcher.clone();
+
+    let mut initial_items: Vec<LauncherItem> = Vec::new();
+    let mut launcher_mode = false;
+
     if let Some(elements_str) = &cmd_options.elements_str {
-        initial_elements = elements_str.split(app_config.behavior.element_delimiter).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-    } else {
-        if !atty::is(atty::Stream::Stdin) { // Solo leer de stdin si no es una TTY (es decir, hay datos redirigidos)
-            let mut buffer = String::new();
-            match io::stdin().read_to_string(&mut buffer) {
-                Ok(bytes_read) => {
-                    if bytes_read > 0 {
-                        initial_elements = buffer.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-                    }
+        initial_items = elements_str
+            .split(app_config.behavior.element_delimiter)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                LauncherItem::new(
+                    s.to_string(),
+                    s.to_string(),
+                    LauncherSource::Direct,
+                )
+            })
+            .collect();
+    } else if !atty::is(atty::Stream::Stdin) {
+        // Solo leer de stdin si no es una TTY (es decir, hay datos redirigidos)
+        let mut buffer = String::new();
+        match io::stdin().read_to_string(&mut buffer) {
+            Ok(bytes_read) => {
+                if bytes_read > 0 {
+                    initial_items = buffer
+                        .lines()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(|s| {
+                            LauncherItem::new(
+                                s.to_string(),
+                                s.to_string(),
+                                LauncherSource::Direct,
+                            )
+                        })
+                        .collect();
                 }
-                Err(e) => {
-                    if !silent_mode { // Error genuino
-                        eprintln!("Error reading from stdin: {}", e);
-                    }
+            }
+            Err(e) => {
+                if !silent_mode {
+                    eprintln!("Error reading from stdin: {}", e);
                 }
             }
         }
+    } else if launcher_config.launcher_mode_default {
+        launcher_mode = true;
+        initial_items = load_launcher_items(&launcher_config, silent_mode);
     }
 
-    let final_initial_elements = initial_elements;
+    let final_initial_items = initial_items;
     let initial_app_state = AppState {
         current_input: String::new(),
         selected_index: 0,
-        matching_items: final_initial_elements.clone(),
-        all_items: final_initial_elements,
+        scroll_offset: 0,
+        matching_items: final_initial_items.clone(),
+        all_items: final_initial_items,
         prompt: cmd_options.prompt.clone(),
+        launcher_mode,
+        silent_mode,
+        history_max_items: launcher_config.history_max_items,
+        source_boost_history: launcher_config.source_boost_history,
+        source_boost_start_menu: launcher_config.source_boost_start_menu,
+        source_boost_path: launcher_config.source_boost_path,
     };
+
+    let case_sensitive = app_config.behavior.case_sensitive;
+
+    if cmd_options.metrics {
+        let startup_ms = startup_t0.elapsed().as_millis();
+        print_metrics(&initial_app_state, case_sensitive, startup_ms);
+        return Ok(());
+    }
+
+    if let Some(debug_query) = &cmd_options.debug_ranking {
+        let ranked = rank_items(&initial_app_state, debug_query, case_sensitive);
+
+        println!("Debug ranking for query: '{}'", debug_query);
+        println!(
+            "Dataset size: {} | case_sensitive={} | launcher_mode={}",
+            initial_app_state.all_items.len(),
+            case_sensitive,
+            initial_app_state.launcher_mode
+        );
+
+        for (i, entry) in ranked.iter().take(20).enumerate() {
+            println!(
+                "{:>2}. total={:<5} fuzzy={:<5} boost={:<5} source={:<10} label={} target={}",
+                i + 1,
+                entry.total_score,
+                entry.fuzzy_score,
+                entry.source_boost,
+                source_name(entry.item.source),
+                entry.item.label,
+                entry.item.target
+            );
+        }
+
+        return Ok(());
+    }
     
     {
         let mut app_state_global_guard = APP_STATE.lock().unwrap();

@@ -3,7 +3,10 @@
 [![Latest Release](https://img.shields.io/github/v/release/SynrgStudio/rmenu)](https://github.com/SynrgStudio/rmenu/releases/latest)
 [![License](https://img.shields.io/github/license/SynrgStudio/rmenu)](https://github.com/SynrgStudio/rmenu/blob/main/LICENSE)
 
-**Rmenu** is a lightweight and fast application launcher and menu generator for Windows, heavily inspired by `dmenu` from the suckless.org tools. It reads a list of items from standard input or command-line arguments, allows the user to efficiently search and select an item, and prints the selected item to standard output. This makes it a powerful component for scripting and creating custom workflows.
+**Rmenu** is a lightweight and fast launcher for Windows inspired by `dmenu`. It supports two modes:
+
+1. **Launcher mode (default):** if you run `rmenu.exe` without `-e` or `stdin`, it auto-loads items from History + Start Menu + PATH and executes the selected target with Enter.
+2. **dmenu/script mode:** if you pass items via `-e` or `stdin`, it behaves like classic dmenu and prints the selected item to `stdout`.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SynrgStudio/rmenu/main/img.jpg" alt="NEED TO ADD SCREENSHOT :D" width="600"/>
@@ -11,7 +14,10 @@
 
 ## Features
 
-*   **`dmenu` Philosophy:** Reads items from `stdin` (one per line) or from the `-e` argument (comma-separated by default), prints selected item to `stdout`. Exits with code 0 on selection, 1 on Escape.
+*   **Launcher mode by default:** No input required. Auto-indexes History + Start Menu + PATH.
+*   **dmenu/script mode:** Reads items from `stdin` or from `-e`, prints selected item to `stdout`.
+*   **Fast fuzzy ranking:** Prioritizes exact/prefix matches and configurable source boosts.
+*   **Configurable source priority and filtering:** `source_boost_*` and `blacklist_path_commands` in config.
 *   **Highly Customizable:**
     *   Colors (background, foreground, selected, border)
     *   Fonts (name, size, weight)
@@ -82,21 +88,24 @@ Rmenu can be invoked from the command line (e.g., PowerShell, CMD).
 
 ### Basic Examples
 
-*   **Provide items via `stdin`:**
+*   **Launcher mode (default):**
+    ```powershell
+    rmenu.exe
+    ```
+
+*   **Provide items via `stdin` (script mode):**
     ```powershell
     echo "Option 1`nOption 2`nAnother Option" | rmenu.exe
     ```
-*   **Provide items via `-e` argument (comma-separated by default):**
+
+*   **Provide items via `-e` argument (script mode):**
     ```powershell
     rmenu.exe -e "Item A,Item B,Item C"
     ```
-*   **Use a prompt:**
+
+*   **Use a prompt with script mode:**
     ```powershell
     rmenu.exe -p "Choose your destiny:" -e "Path 1,Path 2"
-    ```
-*   **Use a predefined layout:**
-    ```powershell
-    Get-ChildItem -File | Select-Object -ExpandProperty Name | rmenu.exe --layout top-fullwidth --prompt "Select a file:"
     ```
 
 ### Command-Line Options
@@ -109,12 +118,15 @@ Usage: rmenu [OPTIONS]
 
 Input Options:
   -e, --elements <LIST>   List of items (delimiter in config.ini, default: ',').
-                            If not provided, rmenu reads from stdin (one per line).
+                            If omitted and stdin is piped, rmenu reads stdin (one per line).
+                            If omitted and stdin is not piped, launcher mode is used (default).
   -p, --prompt <TEXT>     Text to display as prompt.
 
 Configuration and Behavior Options:
   -c, --config <PATH>     Path to the configuration file (config.ini).
   -s, --silent            Suppress all error/diagnostic messages (stderr).
+  --debug-ranking <QUERY> Print ranking breakdown (fuzzy + source boost) and exit.
+  --metrics               Print startup/search/dataset metrics and exit.
   -h, --help              Show this help.
 
 Geometry and Layout Options (override config.ini):
@@ -138,7 +150,7 @@ Rmenu can be extensively customized using a configuration file.
 
 ### `config.ini` File
 
-By default, `rmenu` looks for a configuration file at `%APPDATA%\\rmenu\\config.ini`. If it's not found, `rmenu` will use default values and attempt to create a default `config.ini` at that location on its first run (if it has write permissions).
+By default, `rmenu` looks for a configuration file at `%APPDATA%\\rmenu\\config.ini`. If it's not found, `rmenu` creates one with defaults.
 
 You can specify a custom path to a configuration file using the `-c` or `--config` command-line option.
 
@@ -174,12 +186,25 @@ weight = 400 ; (e.g., 400 for Normal, 700 for Bold)
 
 [Behavior]
 case_sensitive = false
-instant_selection = false ; (If true, selecting an item with arrow keys and then typing further will immediately confirm the current selection - Not yet implemented)
-max_items = 10       ; Maximum number of items to display in the list
-element_delimiter = , ; Delimiter for items passed via -e argument
+instant_selection = false ; reserved
+max_items = 10
+element_delimiter = ,
+
+[Launcher]
+launcher_mode_default = true
+enable_history = true
+enable_start_menu = true
+enable_path = true
+history_max_items = 300
+source_boost_history = 650
+source_boost_start_menu = 480
+source_boost_path = 0
+blacklist_path_commands = powercfg,where,whoami,icacls,takeown,tasklist,taskkill,wevtutil,sfc,dism,gpupdate,bcdedit,reg,sc,netsh,wmic
 ```
 
-**Note on `instant_selection`:** This feature is planned but not yet fully implemented.
+**Launcher ranking knobs:**
+- Increase `source_boost_start_menu` if you want apps to dominate over PATH tools.
+- Keep `blacklist_path_commands` for non-launch-friendly CLI commands (e.g. `powercfg`).
 
 ### Color Formatting
 
@@ -194,6 +219,67 @@ For `x_position` and `y_position`:
 
 *   **Absolute pixels:** `100` (100 pixels from the left/top edge)
 *   **Relative to screen center:** `r0.5` (centers the window along that axis based on screen dimension). `r0.3` would position it at 30% of the screen dimension, centered.
+
+## Performance
+
+Current core performance can be measured with built-in diagnostics:
+
+```powershell
+rmenu.exe --metrics
+```
+
+Example output:
+
+```text
+rmenu metrics
+- startup_prepare_ms: 2
+- search_p95_ms: 0.030
+- dataset_items: 1800
+- dataset_estimated_bytes: 140000
+- index_cache_bytes: 75215
+```
+
+### Reproducible benchmark workflow
+
+Use this workflow to compare versions or configuration changes:
+
+1. Build debug binary:
+   ```powershell
+   cargo build
+   ```
+2. Run metrics 5 times (cold/warm mixed):
+   ```powershell
+   1..5 | ForEach-Object { .\target\debug\rmenu.exe --metrics }
+   ```
+3. Inspect ranking behavior on fixed queries:
+   ```powershell
+   .\target\debug\rmenu.exe --debug-ranking pow
+   .\target\debug\rmenu.exe --debug-ranking code
+   .\target\debug\rmenu.exe --debug-ranking calc
+   ```
+4. Keep a text snapshot for comparison:
+   ```powershell
+   .\target\debug\rmenu.exe --metrics | Out-File .\bench-metrics.txt -Encoding utf8
+   .\target\debug\rmenu.exe --debug-ranking pow | Out-File .\bench-ranking-pow.txt -Encoding utf8
+   ```
+
+### Notes
+
+- `startup_prepare_ms` is measured before entering the UI message loop.
+- `search_p95_ms` is computed from internal sample queries.
+- `dataset_estimated_bytes` is string-size estimation (`label + target`), not process RSS.
+
+## Diagnostics
+
+*   **Ranking debug:**
+    ```powershell
+    rmenu.exe --debug-ranking pow
+    ```
+
+*   **Core metrics (startup/search/dataset):**
+    ```powershell
+    rmenu.exe --metrics
+    ```
 
 ## Scripting Examples (PowerShell)
 
