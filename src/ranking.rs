@@ -99,17 +99,26 @@ pub fn rank_items(app_state: &AppState, query: &str, case_sensitive: bool) -> Ve
     ranked
 }
 
-pub fn update_matching_items(app_state: &mut AppState, case_sensitive: bool, max_visible_items: usize) {
+pub fn update_matching_items_with_dataset(
+    app_state: &mut AppState,
+    dataset: Vec<LauncherItem>,
+    case_sensitive: bool,
+    max_visible_items: usize,
+) {
     if app_state.current_input.is_empty() {
-        app_state.matching_items = app_state.all_items.clone();
+        app_state.matching_items = dataset;
         ensure_selection_visible(app_state, max_visible_items);
         return;
     }
 
-    let ranked = rank_items(app_state, &app_state.current_input, case_sensitive);
+    let mut temp_state = app_state.clone();
+    temp_state.all_items = dataset;
+
+    let ranked = rank_items(&temp_state, &app_state.current_input, case_sensitive);
     app_state.matching_items = ranked.into_iter().map(|entry| entry.item).collect();
     ensure_selection_visible(app_state, max_visible_items);
 }
+
 
 #[cfg(test)]
 mod tests {

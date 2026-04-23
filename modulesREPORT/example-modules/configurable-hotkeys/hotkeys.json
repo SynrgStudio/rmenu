@@ -1,0 +1,11 @@
+{
+  "bindings": {
+    "toggleHint": "ctrl+h",
+    "nextItem": "ctrl+j",
+    "prevItem": "ctrl+k",
+    "submitSelection": "ctrl+enter",
+    "clearQuery": "ctrl+backspace"
+  },
+  "quickSelectMode": "submit",
+  "showAccessory": true
+}

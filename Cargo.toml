@@ -42,3 +42,7 @@ codegen-units = 1   # Reduce parallel code generation units for better optimizat
 [[bin]]
 name = "rmenu"
 path = "src/main.rs"
+
+[[bin]]
+name = "rmenu-module-host"
+path = "src/module_host_main.rs"

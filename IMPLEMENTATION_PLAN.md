@@ -175,6 +175,22 @@ Opciones:
 
 **Regla**: no romper el flujo de desarrollo sin daemon.
 
+## Fase E — Web/Distribución de módulos (predocumentación)
+
+Agregar en la página web oficial un sector **Modules** con catálogo de módulos mantenidos por el proyecto.
+
+Cada módulo del catálogo debe incluir, como mínimo:
+- nombre,
+- descripción corta,
+- versión,
+- descarga en formato `.rmod` (single-file),
+- descarga en formato carpeta (template/dev).
+
+Objetivo:
+- facilitar adopción sin fricción,
+- unificar distribución oficial,
+- mantener paridad entre formato single-file y formato desarrollo.
+
 ---
 
 ## 6) Definición de “Done” por release
@@ -323,6 +339,14 @@ Orden recomendado para empezar hoy:
   - [x] Mover snapshot histórico a `docs/audits/codebase-report-2026-04-22.md`.
   - [x] Dejar `codebase-report.md` como puntero explícito (no fuente de estado actual).
   - [x] Mantener README/plan como fuentes vivas de estado.
+
+## WEB / ECOSISTEMA MÓDULOS (predocumentación)
+
+- [ ] **T-026 Sector "Modules" en web oficial**
+  - [ ] Listar todos los módulos oficiales mantenidos por el proyecto.
+  - [ ] Mostrar por módulo: nombre, descripción y versión actual.
+  - [ ] Publicar ambos formatos de descarga por módulo: `.rmod` y carpeta.
+  - [ ] Mantener sincronía de versión entre ambos formatos.
 
 ## ESTADO DE PRODUCCIÓN ACTUAL (SNAPSHOT PARA REINICIO DE CHAT)
 

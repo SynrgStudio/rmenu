@@ -12,6 +12,7 @@ pub struct RmenuConfig {
     pub font: FontConfig,
     pub behavior: BehaviorConfig,
     pub launcher: LauncherConfig,
+    pub modules: ModulesRuntimeConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -43,12 +44,19 @@ pub struct FontConfig {
     pub weight: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuickSelectMode {
+    Select,
+    Submit,
+}
+
 #[derive(Debug, Clone)]
 pub struct BehaviorConfig {
     pub case_sensitive: bool,
     pub instant_selection: bool,
     pub max_items: i32,
     pub element_delimiter: char,
+    pub quick_select_mode: QuickSelectMode,
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +70,22 @@ pub struct LauncherConfig {
     pub source_boost_start_menu: i64,
     pub source_boost_path: i64,
     pub blacklist_path_commands: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DedupeSourcePriority {
+    CoreFirst,
+    ProviderFirst,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModulesRuntimeConfig {
+    pub provider_total_budget_ms: u128,
+    pub provider_timeout_ms: u64,
+    pub max_items_per_provider_host: usize,
+    pub dedupe_source_priority: DedupeSourcePriority,
+    pub host_restart_backoff_ms: u64,
+    pub max_ipc_payload_bytes: usize,
 }
 
 fn default_blacklist_path_commands() -> Vec<String> {
@@ -108,8 +132,9 @@ impl Default for RmenuConfig {
             behavior: BehaviorConfig {
                 case_sensitive: false,
                 instant_selection: false,
-                max_items: 10, 
+                max_items: 10,
                 element_delimiter: ',',
+                quick_select_mode: QuickSelectMode::Submit,
             },
             launcher: LauncherConfig {
                 launcher_mode_default: true,
@@ -121,6 +146,14 @@ impl Default for RmenuConfig {
                 source_boost_start_menu: 480,
                 source_boost_path: 0,
                 blacklist_path_commands: default_blacklist_path_commands(),
+            },
+            modules: ModulesRuntimeConfig {
+                provider_total_budget_ms: 35,
+                provider_timeout_ms: 1500,
+                max_items_per_provider_host: 24,
+                dedupe_source_priority: DedupeSourcePriority::CoreFirst,
+                host_restart_backoff_ms: 800,
+                max_ipc_payload_bytes: 256 * 1024,
             },
         }
     }
@@ -227,7 +260,12 @@ impl RmenuConfig {
         s.push_str(&format!("case_sensitive = {}\n", self.behavior.case_sensitive));
         s.push_str(&format!("instant_selection = {}\n", self.behavior.instant_selection));
         s.push_str(&format!("max_items = {}\n", self.behavior.max_items));
-        s.push_str(&format!("element_delimiter = {}\n\n", self.behavior.element_delimiter));
+        s.push_str(&format!("element_delimiter = {}\n", self.behavior.element_delimiter));
+        let quick_select_mode = match self.behavior.quick_select_mode {
+            QuickSelectMode::Select => "select",
+            QuickSelectMode::Submit => "submit",
+        };
+        s.push_str(&format!("quick_select_mode = {}\n\n", quick_select_mode));
 
         s.push_str("[Launcher]\n");
         s.push_str(&format!("launcher_mode_default = {}\n", self.launcher.launcher_mode_default));
@@ -239,10 +277,25 @@ impl RmenuConfig {
         s.push_str(&format!("source_boost_start_menu = {}\n", self.launcher.source_boost_start_menu));
         s.push_str(&format!("source_boost_path = {}\n", self.launcher.source_boost_path));
         s.push_str(&format!(
-            "blacklist_path_commands = {}\n",
+            "blacklist_path_commands = {}\n\n",
             self.launcher.blacklist_path_commands.join(",")
         ));
-        
+
+        s.push_str("[Modules]\n");
+        s.push_str(&format!("provider_total_budget_ms = {}\n", self.modules.provider_total_budget_ms));
+        s.push_str(&format!("provider_timeout_ms = {}\n", self.modules.provider_timeout_ms));
+        s.push_str(&format!(
+            "max_items_per_provider_host = {}\n",
+            self.modules.max_items_per_provider_host
+        ));
+        let dedupe_source_priority = match self.modules.dedupe_source_priority {
+            DedupeSourcePriority::CoreFirst => "core_first",
+            DedupeSourcePriority::ProviderFirst => "provider_first",
+        };
+        s.push_str(&format!("dedupe_source_priority = {}\n", dedupe_source_priority));
+        s.push_str(&format!("host_restart_backoff_ms = {}\n", self.modules.host_restart_backoff_ms));
+        s.push_str(&format!("max_ipc_payload_bytes = {}\n", self.modules.max_ipc_payload_bytes));
+
         s
     }
 
@@ -304,6 +357,12 @@ impl RmenuConfig {
             if let Some(val) = behavior_props.get("instant_selection") { config.behavior.instant_selection = val.parse().unwrap_or(config.behavior.instant_selection); }
             if let Some(val) = behavior_props.get("max_items") { config.behavior.max_items = val.parse().unwrap_or(config.behavior.max_items); }
             if let Some(val) = behavior_props.get("element_delimiter") { config.behavior.element_delimiter = val.chars().next().unwrap_or(config.behavior.element_delimiter); }
+            if let Some(val) = behavior_props.get("quick_select_mode") {
+                config.behavior.quick_select_mode = match val.trim().to_ascii_lowercase().as_str() {
+                    "select" => QuickSelectMode::Select,
+                    _ => QuickSelectMode::Submit,
+                };
+            }
         }
 
         if let Some(launcher_props) = properties.get("Launcher") {
@@ -321,6 +380,20 @@ impl RmenuConfig {
                     config.launcher.blacklist_path_commands = parsed;
                 }
             }
+        }
+
+        if let Some(modules_props) = properties.get("Modules") {
+            if let Some(val) = modules_props.get("provider_total_budget_ms") { config.modules.provider_total_budget_ms = val.parse().unwrap_or(config.modules.provider_total_budget_ms); }
+            if let Some(val) = modules_props.get("provider_timeout_ms") { config.modules.provider_timeout_ms = val.parse().unwrap_or(config.modules.provider_timeout_ms); }
+            if let Some(val) = modules_props.get("max_items_per_provider_host") { config.modules.max_items_per_provider_host = val.parse().unwrap_or(config.modules.max_items_per_provider_host); }
+            if let Some(val) = modules_props.get("dedupe_source_priority") {
+                config.modules.dedupe_source_priority = match val.trim().to_ascii_lowercase().as_str() {
+                    "provider_first" => DedupeSourcePriority::ProviderFirst,
+                    _ => DedupeSourcePriority::CoreFirst,
+                };
+            }
+            if let Some(val) = modules_props.get("host_restart_backoff_ms") { config.modules.host_restart_backoff_ms = val.parse().unwrap_or(config.modules.host_restart_backoff_ms); }
+            if let Some(val) = modules_props.get("max_ipc_payload_bytes") { config.modules.max_ipc_payload_bytes = val.parse().unwrap_or(config.modules.max_ipc_payload_bytes); }
         }
         Ok(())
     }
@@ -355,6 +428,7 @@ pub struct CmdOptions {
     pub silent: bool,
     pub debug_ranking: Option<String>,
     pub metrics: bool,
+    pub modules_debug: bool,
     pub reindex: bool,
     pub layout: Option<String>,
     pub cli_width_percent: Option<f32>,
@@ -408,6 +482,7 @@ pub fn parse_args() -> CmdOptions {
                 if i + 1 < args.len() { options.debug_ranking = Some(args[i + 1].clone()); i += 1; }
             }
             "--metrics" => { options.metrics = true; }
+            "--modules-debug" => { options.modules_debug = true; }
             "--reindex" => { options.reindex = true; }
             "-h" | "--help" => { print_help(); std::process::exit(0); }
             "--layout" => {
@@ -458,6 +533,7 @@ pub fn print_help() {
     println!("  -s, --silent            Suprime todos los mensajes de error/diagnóstico (stderr).");
     println!("  --debug-ranking <QUERY> Imprime ranking (fuzzy + source boost) para depuración y sale.");
     println!("  --metrics               Imprime métricas de startup/UI/search/dataset y sale.");
+    println!("  --modules-debug         Imprime diagnóstico de módulos/hosts y sale.");
     println!("  --reindex               Fuerza rebuild del índice (ignora cache en esta ejecución).");
     println!("  -h, --help              Muestra esta ayuda.");
     println!("");

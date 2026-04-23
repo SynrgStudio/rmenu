@@ -1,0 +1,12 @@
+{
+  "bindings": {
+    "nextItem": "ctrl+j",
+    "prevItem": "ctrl+k",
+    "submit": "ctrl+enter",
+    "clearQuery": "ctrl+backspace",
+    "toggleAccessory": "ctrl+h"
+  },
+  "quickSelectMode": "submit",
+  "showAccessoryOnLoad": true,
+  "accessoryText": "Starter module activo"
+}

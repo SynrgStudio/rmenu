@@ -1,0 +1,14 @@
+name = "configurable-hotkeys"
+version = "0.1.0"
+api_version = 1
+kind = "script"
+entry = "index.js"
+enabled = true
+priority = 10
+description = "Hotkeys configurables para navegación y acciones del launcher"
+author = "rmenu example"
+
+capabilities = ["keys", "commands", "decorate-items", "input-accessory"]
+
+[config]
+file = "hotkeys.json"

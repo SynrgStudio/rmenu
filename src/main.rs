@@ -1,6 +1,7 @@
 mod app_state;
 mod fuzzy;
 mod launcher;
+mod modules;
 mod ranking;
 mod settings;
 mod sources;
@@ -13,7 +14,7 @@ use settings::{parse_args, CmdOptions, RmenuConfig};
 use sources::{index_cache_size_bytes, load_launcher_items};
 use std::{
     io::{self, Read},
-    path::Path,
+    path::{Path, PathBuf},
     time::Instant,
 };
 use ui_win32::{measure_ui_latencies, UiLatencyMetrics};
@@ -150,10 +151,31 @@ fn main() -> windows::core::Result<()> {
     };
 
     let case_sensitive = app_config.behavior.case_sensitive;
+    let mut module_runtime = modules::ModuleRuntime::new();
+    module_runtime.configure_policy(modules::ModuleRuntimePolicy {
+        provider_total_budget_ms: app_config.modules.provider_total_budget_ms,
+        provider_timeout_ms: app_config.modules.provider_timeout_ms,
+        max_items_per_provider_host: app_config.modules.max_items_per_provider_host,
+        dedupe_source_priority: match app_config.modules.dedupe_source_priority {
+            settings::DedupeSourcePriority::CoreFirst => modules::DedupeSourcePriority::CoreFirst,
+            settings::DedupeSourcePriority::ProviderFirst => modules::DedupeSourcePriority::ProviderFirst,
+        },
+        host_restart_backoff_ms: app_config.modules.host_restart_backoff_ms,
+        max_ipc_payload_bytes: app_config.modules.max_ipc_payload_bytes,
+    });
+    let _module_api_version = module_runtime.api_version();
+    module_runtime.register_builtin_module(Box::new(modules::BuiltinLifecycleModule));
+    module_runtime.register_builtin_module(Box::new(modules::BuiltinQueryProviderModule));
+    module_runtime.load_external_descriptors(&PathBuf::from("modules"), silent_mode);
+
+    if cmd_options.modules_debug {
+        println!("{}", module_runtime.modules_debug_report());
+        return Ok(());
+    }
 
     if cmd_options.metrics {
         let startup_ms = startup_t0.elapsed().as_millis();
-        let ui_metrics = measure_ui_latencies(&cmd_options, &app_config, initial_app_state.clone()).ok();
+        let ui_metrics = measure_ui_latencies(&cmd_options, &app_config, initial_app_state.clone(), module_runtime).ok();
         print_metrics(&initial_app_state, case_sensitive, startup_ms, ui_metrics);
         return Ok(());
     }
@@ -185,6 +207,6 @@ fn main() -> windows::core::Result<()> {
         return Ok(());
     }
 
-    let exit_code = ui_win32::run_ui(&cmd_options, &app_config, initial_app_state)?;
+    let exit_code = ui_win32::run_ui(&cmd_options, &app_config, initial_app_state, module_runtime)?;
     std::process::exit(exit_code);
 }

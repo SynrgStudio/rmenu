@@ -1,0 +1,15 @@
+name = "starter-module"
+version = "0.1.0"
+api_version = 1
+kind = "script"
+entry = "index.js"
+enabled = true
+priority = 0
+description = "Template base para modulos en carpeta"
+author = "your-name"
+homepage = "https://example.com"
+
+capabilities = ["keys", "commands", "decorate-items", "input-accessory"]
+
+[config]
+file = "config.json"

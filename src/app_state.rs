@@ -17,6 +17,9 @@ pub struct LauncherItem {
     pub target_name_compact: String,
     pub target: String,
     pub source: LauncherSource,
+    pub trailing_hint: Option<String>,
+    pub quick_select_key: Option<String>,
+    pub trailing_badge: Option<String>,
 }
 
 impl LauncherItem {
@@ -49,6 +52,9 @@ impl LauncherItem {
             target_name_compact,
             target,
             source,
+            trailing_hint: None,
+            quick_select_key: None,
+            trailing_badge: None,
         }
     }
 }
