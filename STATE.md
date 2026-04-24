@@ -29,7 +29,7 @@ Validated functionality:
 
 ## Latest technical validation
 
-Commands executed:
+Commands executed for the local-scripts/core action work:
 
 ```bash
 cargo check
@@ -37,12 +37,14 @@ cargo test
 cargo run --bin rmenu -- --modules-debug
 ```
 
-Current result:
+Current test result:
 
 ```text
 44 tests passed
 0 failed
 ```
+
+After translating root documentation and updating `build.rs`, `cargo check` was run again successfully.
 
 `build.rs` no longer emits `cargo:warning` for successful copies of `config_example.ini` and `README.md`.
 
@@ -177,6 +179,7 @@ Completed:
 
 - modular architecture documented;
 - v1 specs in root;
+- public root docs/specs translated to English for GitHub readiness;
 - historical docs moved to `docs/historico/`;
 - README updated;
 - `Cargo.toml` metadata cleaned;
@@ -235,7 +238,7 @@ Pending:
 
 #### 2.4 Friction review
 
-Status: partially started.
+Status: current known frictions classified and resolved.
 
 Known frictions:
 
@@ -272,18 +275,19 @@ Pending validation/hardening:
 
 Existing tests: 44.
 
+Covered by current tests includes: `.rmod` parser basics, duplicate/missing blocks, mixed loader, dedupe, command collisions, quick-select duplicate behavior, input accessory kind/priority mapping, host health disable after timeouts, runtime module commands, and external `ReplaceItems` action applying to visible items.
+
 Pending tests:
 
-- valid/invalid manifest;
+- valid/invalid `module.toml`;
 - allow/deny capabilities;
 - provider timeout;
 - provider item cap;
 - hot reload;
 - host restart/backoff;
-- auto-disable;
+- broader auto-disable scenarios;
 - payload limits;
-- input accessory priority/kind;
-- external actions from host.
+- more external host action paths.
 
 ### Phase 5 — Product/core polish
 
@@ -312,7 +316,15 @@ Blockers:
 
 Move to Phase 2.3: hotkeys/quick actions.
 
-This validates another primitive and avoids expanding the core. After that, proceed with hardening and targeted tests.
+Suggested module goal:
+
+- validate `keys` capability routing;
+- validate denial without `keys`;
+- validate quick-select/key-hook UX;
+- confirm duplicate quick-select warnings remain understandable;
+- avoid adding new core primitives.
+
+After that, proceed with Phase 3 hardening and targeted tests.
 
 ---
 

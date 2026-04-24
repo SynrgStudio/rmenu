@@ -93,6 +93,7 @@ Status: mostly complete.
 - [x] Add module documentation links.
 - [x] Document diagnostic commands: `--metrics`, `--debug-ranking`, `--modules-debug`, `--reindex`.
 - [x] Create install/develop/debug module guides.
+- [x] Translate public root documentation/specs to English for GitHub readiness.
 
 ## 1.7 Project metadata
 
@@ -173,17 +174,17 @@ Status: pending.
 
 ## 2.4 Friction review
 
-- [ ] Classify each friction as bug, missing docs, ergonomics, feature-specific need, or real primitive gap.
-- [ ] Prefer docs fixes before code if ambiguity is the issue.
-- [ ] Reject core changes that only improve one isolated case.
-- [ ] Accept core changes only when they unblock several modules or correct the contract.
+- [x] Classify current known frictions as bug, missing docs, ergonomics, feature-specific need, or real primitive gap.
+- [x] Prefer docs fixes before code if ambiguity is the issue.
+- [x] Reject core changes that only improve one isolated case.
+- [x] Accept core changes only when they unblock several modules or correct the contract.
 
 Known frictions:
 
-1. External modules needed real action return path to core — resolved.
-2. Input accessory rendered `[success]` — resolved.
-3. Undeclared hooks generated noisy permission errors — resolved.
-4. Exact provider intent vs global fuzzy ranking — resolved for `local-scripts` v2 through explicit `>` prefix + `ctx.replaceItems(items)` scoped intent mode.
+1. External modules needed real action return path to core — resolved as a v1 contract bug.
+2. Input accessory rendered `[success]` — resolved as UI primitive rendering bug.
+3. Undeclared hooks generated noisy permission errors — resolved as capability routing bug.
+4. Exact provider intent vs global fuzzy ranking — resolved as documentation/pattern issue for `local-scripts` v2 through explicit `>` prefix + `ctx.replaceItems(items)` scoped intent mode, without adding a new primitive.
 
 ---
 
@@ -216,9 +217,9 @@ Pending:
 ## 4.1 Automated tests to add
 
 - [ ] Valid/invalid `.rmod` parser tests.
-- [ ] Duplicate/missing block tests.
+- [x] Duplicate/missing block tests.
 - [ ] Valid/invalid `module.toml` tests.
-- [ ] Mixed loader tests.
+- [x] Mixed loader tests.
 - [ ] Capability allow/deny tests.
 - [ ] Provider timeout and item cap tests.
 - [ ] Dedupe tests.
@@ -227,8 +228,8 @@ Pending:
 - [ ] Hot reload tests.
 - [ ] Host restart/backoff tests.
 - [ ] Auto-disable tests.
-- [ ] Duplicate quick-select tests.
-- [ ] Input accessory priority/kind tests.
+- [x] Duplicate quick-select tests.
+- [x] Input accessory priority/kind tests.
 
 ## 4.2 Local verification commands
 
