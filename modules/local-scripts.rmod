@@ -1,0 +1,108 @@
+#!rmod/v1
+name: local-scripts
+version: 0.1.0
+api_version: 1
+kind: script
+capabilities: input-accessory
+priority: 20
+description: Lists and runs local project scripts behind the > intent prefix.
+
+---module.js---
+const TRIGGER = '>';
+
+function normalize(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function scriptExt(path) {
+  const match = String(path || '').match(/\.([^.\\/]+)$/);
+  return match ? match[1].toLowerCase() : 'script';
+}
+
+function shellTarget(path) {
+  const ext = scriptExt(path);
+  const quoted = `"${path}"`;
+  if (ext === 'ps1') {
+    return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${quoted}`;
+  }
+  if (ext === 'bat' || ext === 'cmd') {
+    return `cmd.exe /c ${quoted}`;
+  }
+  return quoted;
+}
+
+function scoreScript(script, term) {
+  const name = normalize(script.name);
+  const query = normalize(term);
+  if (!query) return 10;
+  if (name === query) return 1000;
+  if (name.startsWith(query)) return 700;
+  if (name.includes(query)) return 400;
+  return -1;
+}
+
+function scriptItem(script, term) {
+  const ext = scriptExt(script.path);
+  const exact = normalize(script.name) === normalize(term) && normalize(term).length > 0;
+  return {
+    id: `local-scripts::${script.name}`,
+    title: script.name,
+    subtitle: script.path,
+    source: 'local-scripts',
+    target: shellTarget(script.path),
+    badge: exact ? 'exact' : ext,
+    hint: script.path
+  };
+}
+
+function loadScripts(ctx) {
+  const config = typeof ctx.moduleConfig === 'function' ? ctx.moduleConfig() : null;
+  const scripts = config && Array.isArray(config.scripts) ? config.scripts : [];
+  return scripts
+    .filter((script) => script && typeof script.name === 'string' && typeof script.path === 'string')
+    .map((script) => ({ name: script.name.trim(), path: script.path.trim() }))
+    .filter((script) => script.name.length > 0 && script.path.length > 0);
+}
+
+export default function createModule() {
+  return {
+    onQueryChange(query, ctx) {
+      const raw = String(query || '');
+      if (!raw.startsWith(TRIGGER)) {
+        ctx.clearInputAccessory();
+        return;
+      }
+
+      const term = raw.slice(TRIGGER.length).trim();
+      const scripts = loadScripts(ctx);
+      const matches = scripts
+        .map((script) => ({ script, score: scoreScript(script, term) }))
+        .filter((entry) => entry.score >= 0)
+        .sort((a, b) => b.score - a.score || a.script.name.localeCompare(b.script.name))
+        .map((entry) => scriptItem(entry.script, term));
+
+      ctx.setInputAccessory({
+        text: `local scripts: ${matches.length}`,
+        kind: matches.length > 0 ? 'info' : 'warning',
+        priority: 80
+      });
+      ctx.replaceItems(matches);
+    }
+  };
+}
+
+---config.json---
+{
+  "scripts": [
+    { "name": "build", "path": ".\\modules\\local-scripts\\scripts\\build.ps1" },
+    { "name": "build-prod", "path": ".\\modules\\local-scripts\\scripts\\build-prod.ps1" },
+    { "name": "test", "path": ".\\modules\\local-scripts\\scripts\\test.bat" },
+    { "name": "lint", "path": ".\\modules\\local-scripts\\scripts\\lint.ps1" },
+    { "name": "open-logs", "path": ".\\modules\\local-scripts\\scripts\\open-logs.cmd" }
+  ]
+}
+
+---readme.md---
+# local-scripts
+
+Type `>` to list local scripts and `> term` to filter them. Enter runs the selected script through the standard launcher target path.

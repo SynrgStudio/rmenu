@@ -1,46 +1,46 @@
 # PROVIDER EXECUTION POLICY
 
-Estado: Frozen v1  
-Fecha: 2026-04-24
+Status: Frozen v1  
+Date: 2026-04-24
 
 ---
 
-## 1. Objetivo
+## 1. Objective
 
-Definir cómo se ejecutan providers para mantener baja latencia, estabilidad y resultados deterministas.
-
----
-
-## 2. Principios
-
-1. Providers no deben bloquear UI.
-2. Query nueva puede invalidar trabajo viejo.
-3. Core controla budgets, timeouts y merge final.
-4. Resultado debe ser reproducible para la misma entrada.
-5. Error de provider no rompe query global.
+Define how providers are executed while preserving low latency, stability, and deterministic results.
 
 ---
 
-## 3. Ciclo por query
+## 2. Principles
 
-1. Core recibe query.
-2. Core evalúa providers habilitados.
-3. Core aplica capability `providers`.
-4. Core recolecta respuestas dentro de presupuesto.
-5. Core descarta respuestas inválidas, tardías o stale si aplica.
-6. Core sanitiza items.
-7. Core aplica cap por provider host.
-8. Core hace merge con items base.
-9. Core aplica dedupe.
-10. Core aplica ranking final.
-11. Core permite decorations si corresponde.
-12. Core renderiza.
+1. Providers must not block the UI.
+2. A new query may invalidate older work.
+3. The core controls budgets, timeouts, and final merge.
+4. Results must be reproducible for the same input.
+5. Provider errors do not break the global query.
 
 ---
 
-## 4. Configuración v1
+## 3. Per-query lifecycle
 
-Parámetros en `[Modules]`:
+1. Core receives query.
+2. Core evaluates enabled providers.
+3. Core applies the `providers` capability.
+4. Core collects responses within budget.
+5. Core discards invalid, late, or stale responses when applicable.
+6. Core sanitizes items.
+7. Core applies per-provider-host item caps.
+8. Core merges provider items with base items.
+9. Core applies dedupe.
+10. Core applies final ranking.
+11. Core allows decorations when applicable.
+12. Core renders.
+
+---
+
+## 4. Configuration v1
+
+Parameters in `[Modules]`:
 
 ```ini
 provider_total_budget_ms = 35
@@ -53,128 +53,128 @@ max_ipc_payload_bytes = 262144
 
 ### `provider_total_budget_ms`
 
-Presupuesto global aproximado para recolectar providers por query.
+Approximate global budget for collecting providers for one query.
 
-Si se excede, el core deja de consultar providers restantes y continúa con resultados disponibles.
+If exceeded, the core stops querying remaining providers and continues with available results.
 
 ### `provider_timeout_ms`
 
-Timeout por request hacia provider/host.
+Timeout per request to a provider/host.
 
-Si se excede:
+If exceeded:
 
-- se descarta la respuesta,
-- se registra timeout,
-- puede reiniciarse el host,
-- puede contribuir a degradación/desactivación.
+- the response is discarded,
+- the timeout is recorded,
+- the host may be restarted,
+- it may contribute to degradation/disable policy.
 
 ### `max_items_per_provider_host`
 
-Cap máximo de items aceptados por provider host.
+Maximum accepted item count per provider host.
 
-Items excedentes se truncan antes de entrar al pipeline.
+Extra items are truncated before entering the pipeline.
 
 ### `dedupe_source_priority`
 
-Valores:
+Values:
 
 - `core_first`
 - `provider_first`
 
-Define prioridad al resolver duplicados entre items core y provider.
+Defines priority when resolving duplicates between core and provider items.
 
 ### `max_ipc_payload_bytes`
 
-Límite máximo de request/response IPC.
+Maximum request/response IPC payload size.
 
-Payloads mayores se rechazan para proteger estabilidad.
-
----
-
-## 5. Merge y dedupe
-
-Dedupe debe ser determinista.
-
-Key sugerida:
-
-1. `id` estable si aplica,
-2. `target` normalizado si existe,
-3. fallback controlado por core.
-
-Políticas:
-
-- `core_first`: ante duplicado, gana item core.
-- `provider_first`: ante duplicado, gana item de provider.
-
-Después de dedupe, el ranking final sigue siendo autoridad del core.
+Larger payloads are rejected to protect stability.
 
 ---
 
-## 6. Orden de ejecución
+## 5. Merge and dedupe
 
-Providers deben evaluarse en orden estable:
+Dedupe must be deterministic.
 
-1. prioridad,
-2. nombre de módulo/provider,
-3. orden normalizado de descubrimiento si aplica.
+Suggested key:
 
-Objetivo: misma entrada debe producir mismo orden observable.
+1. stable `id` when applicable,
+2. normalized `target` when present,
+3. core-controlled fallback.
 
----
+Policies:
 
-## 7. Sanitización de items
+- `core_first`: when duplicated, core item wins.
+- `provider_first`: when duplicated, provider item wins.
 
-El core debe validar:
-
-- `id` obligatorio,
-- `title` obligatorio,
-- longitudes máximas,
-- strings multiline donde no correspondan,
-- `quickSelectKey` válido,
-- campos desconocidos ignorables,
-- payload total dentro de límite IPC.
-
-Items inválidos se descartan o normalizan. No deben crashear el core.
+After dedupe, final ranking remains under core authority.
 
 ---
 
-## 8. Errores
+## 6. Execution order
 
-Ante error de provider:
+Providers must be evaluated in stable order:
 
-- la query global continúa,
-- se registra módulo/provider/latencia/error,
-- no se renderiza resultado parcial inválido,
-- el host puede reiniciarse,
-- errores consecutivos pueden degradar o deshabilitar el módulo.
+1. priority,
+2. module/provider name,
+3. normalized discovery order when applicable.
 
-Ver `ERROR_ISOLATION_POLICY.md`.
+Goal: the same input should produce the same observable order.
 
 ---
 
-## 9. Observabilidad mínima
+## 7. Item sanitization
 
-`--modules-debug` debe exponer al menos:
+The core must validate:
 
-- módulos cargados,
-- hosts corriendo,
-- estado por host,
+- required `id`,
+- required `title`,
+- maximum lengths,
+- multiline strings where disallowed,
+- valid `quickSelectKey`,
+- unknown fields as ignorable,
+- total payload within IPC limit.
+
+Invalid items are discarded or normalized. They must not crash the core.
+
+---
+
+## 8. Errors
+
+On provider error:
+
+- the global query continues,
+- module/provider/latency/error are recorded,
+- invalid partial results are not rendered,
+- the host may be restarted,
+- consecutive errors may degrade or disable the module.
+
+See `ERROR_ISOLATION_POLICY.md`.
+
+---
+
+## 9. Minimum observability
+
+`--modules-debug` must expose at least:
+
+- loaded modules,
+- running hosts,
+- host state,
 - request count,
 - error count,
 - timeout count,
 - restart count,
-- latencia promedio/máxima,
-- últimos errores.
+- average/max latency,
+- recent errors.
 
 ---
 
-## 10. Recomendaciones para autores
+## 10. Author recommendations
 
-- Responder rápido.
-- Devolver pocos items relevantes.
-- Filtrar por query temprano.
-- Cachear cuando aplique.
-- Evitar I/O bloqueante.
-- No depender de recibir siempre todas las queries.
-- No depender de orden no documentado.
-- Manejar errores propios y loggear contexto.
+- Respond quickly.
+- Return few relevant items.
+- Filter early by query.
+- Cache when appropriate.
+- Avoid blocking I/O.
+- Do not depend on receiving every query.
+- Do not depend on undocumented ordering.
+- Handle own errors and log useful context.

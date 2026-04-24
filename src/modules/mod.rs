@@ -471,11 +471,10 @@ impl ModuleRuntime {
             let started = Instant::now();
             match host.on_query_change(&query) {
                 Ok(actions) => {
-                    let mut shadow_state = app_state.clone();
                     Self::apply_ipc_actions(
                         &host.module_name,
                         actions,
-                        &mut shadow_state,
+                        app_state,
                         &mut self.state,
                         self.host_capabilities.get(&host.module_name),
                     );
@@ -1762,12 +1761,12 @@ impl RuntimeModule for BuiltinQueryProviderModule {
 mod tests {
     use super::{
         dedupe_launcher_items_by_priority, parse_namespaced_command, sanitize_ipc_item, sanitize_ipc_items,
-        BuiltinLifecycleModule, DedupeSourcePriority, ExternalModuleStatus, HostTelemetry, ModuleRuntime,
+        BuiltinLifecycleModule, DedupeSourcePriority, ExternalModuleStatus, HostTelemetry, IpcAction, ModuleRuntime,
         ResolvedCommandRoute, IPC_ITEM_MAX_BADGE_LEN, IPC_ITEM_MAX_HINT_LEN, IPC_ITEM_MAX_ID_LEN,
         IPC_ITEM_MAX_SOURCE_LEN, IPC_ITEM_MAX_SUBTITLE_LEN, IPC_ITEM_MAX_TARGET_LEN,
         IPC_ITEM_MAX_TITLE_LEN,
     };
-    use crate::app_state::{LauncherItem, LauncherSource};
+    use crate::app_state::{AppState, LauncherItem, LauncherSource};
     use crate::modules::ipc::{IpcInputAccessory, IpcItem};
     use crate::modules::types::{
         BadgeKind, InputAccessoryKind, ModuleCommandDef, ModuleInputAccessory, ModuleItemCapabilities,
@@ -1939,6 +1938,38 @@ mod tests {
         assert_eq!(provider_first[0].label, "Provider A");
         assert_eq!(provider_first[1].label, "Provider B");
         assert_eq!(provider_first[2].label, "Core B");
+    }
+
+    #[test]
+    fn ipc_replace_items_updates_visible_app_items() {
+        let mut app_state = AppState {
+            matching_items: vec![LauncherItem::new(
+                "Core Item".to_string(),
+                "core-target".to_string(),
+                LauncherSource::Direct,
+            )],
+            ..Default::default()
+        };
+        let mut state = super::ModuleRuntimeState::default();
+        let actions = vec![IpcAction::ReplaceItems {
+            items: vec![IpcItem {
+                id: "local-scripts::build".to_string(),
+                title: "build".to_string(),
+                subtitle: Some("modules/local-scripts/scripts/build.ps1".to_string()),
+                source: Some("local-scripts".to_string()),
+                target: Some("powershell.exe -NoProfile -File modules/local-scripts/scripts/build.ps1".to_string()),
+                quick_select_key: None,
+                badge: Some("ps1".to_string()),
+                hint: Some("modules/local-scripts/scripts/build.ps1".to_string()),
+            }],
+        }];
+
+        ModuleRuntime::apply_ipc_actions("local-scripts", actions, &mut app_state, &mut state, None);
+
+        assert!(state.items_replaced_in_cycle);
+        assert_eq!(app_state.matching_items.len(), 1);
+        assert_eq!(app_state.matching_items[0].label, "build");
+        assert_eq!(app_state.matching_items[0].trailing_badge.as_deref(), Some("ps1"));
     }
 
     #[test]

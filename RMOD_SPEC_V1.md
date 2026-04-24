@@ -1,160 +1,153 @@
 # RMOD SPEC V1
 
-Estado: Frozen v1  
-Fecha: 2026-04-24
+Status: Frozen v1  
+Date: 2026-04-24
 
 ---
 
-## 1. Objetivo
+## 1. Objective
 
-Definir el formato single-file `.rmod` para módulos de `rmenu`.
+Define the single-file `.rmod` format for `rmenu` modules.
 
-Regla principal:
+Main rule:
 
-> `.rmod` siempre es texto plano legible.
+> `.rmod` v1 is plain UTF-8 text.
 
-Si en el futuro existe un formato empaquetado/binario, debe usar otra extensión.
-
----
-
-## 2. Descubrimiento
-
-El loader soporta dos formas en `modules/`:
-
-1. Carpeta con `module.toml`.
-2. Archivo `*.rmod`.
-
-Ambas se normalizan al mismo descriptor interno.
+If a packed/binary format exists in the future, it must use a different extension.
 
 ---
 
-## 3. Encoding y formato base
+## 2. File shape
 
-- Encoding: UTF-8.
-- BOM: tolerado, no recomendado.
-- Saltos de línea: `\n` o `\r\n`.
-- Primera línea obligatoria: `#!rmod/v1`.
+A `.rmod` file contains:
 
-Estructura:
+1. magic line,
+2. header key-value lines,
+3. blank line,
+4. named content blocks.
 
-1. Shebang de formato.
-2. Header key-value.
-3. Línea en blanco.
-4. Bloques nombrados `---<nombre>---`.
+Line endings may be `\n` or `\r\n`.
 
----
-
-## 4. Header v1
-
-Formato:
+Required first line:
 
 ```text
-key: value
+#!rmod/v1
 ```
-
-### Claves obligatorias
-
-- `name`
-- `version`
-- `api_version`
-- `kind`
-- `capabilities`
-
-### Claves opcionales
-
-- `enabled`
-- `priority`
-- `description`
-- `author`
-- `homepage`
-
-### Reglas
-
-- Claves desconocidas: warning o ignoradas en v1.
-- `api_version` debe ser numérico y soportado por runtime.
-- `kind` v1 permitido: `script`.
-- `capabilities` es CSV: `providers,commands`.
-- Espacios alrededor de comas en `capabilities` deben tolerarse.
-- `enabled` default: `true`.
-- `priority` default: `0`.
 
 ---
 
-## 5. Bloques v1
+## 3. Header
 
-Bloques delimitados por:
+Required fields:
 
 ```text
----<block-name>---
+name: my-module
+version: 0.1.0
+api_version: 1
+kind: script
+capabilities: providers,commands
 ```
 
-### Bloques soportados
+Optional fields:
 
-- `module.js` — obligatorio.
-- `config.json` — opcional.
-- `readme.md` — opcional.
-- `signature` — opcional, reservado.
+```text
+enabled: true
+priority: 0
+description: Human readable description
+author: Name
+homepage: https://example.com
+```
 
-### Reglas
+Rules:
 
-- `module.js` debe existir exactamente una vez.
-- Bloques duplicados son error.
-- Bloques desconocidos son warning o ignorados en v1.
-- El contenido se toma literal hasta el siguiente delimitador o EOF.
-- `config.json`, si existe, debe ser JSON válido.
+- `name` must be non-empty and unique among loaded modules.
+- `version` is an opaque module version string.
+- `api_version` must be numeric and supported by the runtime.
+- `kind = script` is the only official v1 kind.
+- `capabilities` is a comma-separated list.
+- Unknown header fields may be ignored by v1 loaders.
 
 ---
 
-## 6. Descriptor normalizado
+## 4. Blocks
 
-El parser `.rmod` debe producir el mismo contrato interno que el loader por carpeta.
+A block starts with:
 
-```ts
-type ModuleDescriptor = {
-  sourceType: "directory" | "rmod"
-  sourcePath: string
+```text
+---block-name---
+```
 
-  name: string
-  version: string
-  apiVersion: number
-  kind: "script"
-  capabilities: string[]
+Required block:
 
-  enabled: boolean
-  priority: number
-  description?: string
-  author?: string
-  homepage?: string
+```text
+---module.js---
+```
 
-  entryCode: string
-  configJson?: string
-  readme?: string
+Optional blocks:
+
+```text
+---config.json---
+---readme.md---
+```
+
+Rules:
+
+- duplicate blocks are invalid,
+- `module.js` must export a default factory function,
+- `config.json`, when present, must be valid JSON,
+- unknown blocks may be ignored by v1 loaders.
+
+---
+
+## 5. JavaScript entry
+
+`module.js` must export a default function:
+
+```js
+export default function createModule() {
+  return {
+    onLoad(ctx) {},
+    onQueryChange(query, ctx) {},
+    provideItems(query, ctx) { return []; }
+  };
 }
 ```
 
----
-
-## 7. Errores v1
-
-Errores mínimos recomendados:
-
-- `RMOD_E_INVALID_MAGIC`
-- `RMOD_E_HEADER_MALFORMED`
-- `RMOD_E_MISSING_REQUIRED_HEADER`
-- `RMOD_E_INVALID_API_VERSION`
-- `RMOD_E_DUPLICATE_BLOCK`
-- `RMOD_E_MISSING_MODULE_JS`
-- `RMOD_E_CONFIG_NOT_JSON`
-
-El loader puede agregar contexto humano al error, pero el código estable debe mantenerse para debugging y tests.
+The returned object may implement any public hook from `MODULES_API_SPEC_V1.md`.
 
 ---
 
-## 8. Ejemplo mínimo válido
+## 6. Config
 
-```txt
+`config.json` is passed to the module host as module configuration.
+
+The core does not assign semantics to config fields. Each module owns its config schema.
+
+---
+
+## 7. Error codes
+
+Recommended minimum errors:
+
+| Code | Meaning |
+|---|---|
+| `RMOD_E_INVALID_MAGIC` | Missing or invalid `#!rmod/v1` magic line |
+| `RMOD_E_HEADER_MALFORMED` | Header line is malformed |
+| `RMOD_E_MISSING_REQUIRED_HEADER` | Required header is missing |
+| `RMOD_E_INVALID_API_VERSION` | `api_version` is invalid or unsupported |
+| `RMOD_E_DUPLICATE_BLOCK` | Block appears more than once |
+| `RMOD_E_MISSING_MODULE_JS` | Required `module.js` block is missing |
+| `RMOD_E_CONFIG_NOT_JSON` | `config.json` is not valid JSON |
+
+The loader may add human context to the error, but the stable code should remain unchanged for debugging and tests.
+
+---
+
+## 8. Minimum valid example
+
+```text
 #!rmod/v1
-name: hello-module
+name: hello
 version: 0.1.0
 api_version: 1
 kind: script
@@ -167,11 +160,8 @@ export default function createModule() {
       if (!query.startsWith("hello")) return [];
       return [{
         id: "hello",
-        title: "Hello from module",
-        subtitle: "Example provider item",
-        source: "hello-module",
-        target: "notepad.exe",
-        badge: "demo"
+        title: "Hello",
+        target: "notepad.exe"
       }];
     }
   };
@@ -180,43 +170,33 @@ export default function createModule() {
 
 ---
 
-## 9. Ejemplo con config y readme
+## 9. Example with config and readme
 
-```txt
+```text
 #!rmod/v1
-name: configured-module
+name: local-scripts
 version: 0.1.0
 api_version: 1
 kind: script
-capabilities: providers,decorate-items
+capabilities: input-accessory
 priority: 10
-description: Example configured module
-
----config.json---
-{
-  "prefix": "cfg"
-}
-
----readme.md---
-# configured-module
-
-Example module with config.
+description: Lists local scripts behind an explicit prefix.
 
 ---module.js---
 export default function createModule() {
   return {
-    provideItems(query, ctx) {
-      return [];
+    onQueryChange(query, ctx) {
+      if (!query.startsWith(">")) return;
+      ctx.replaceItems([]);
     }
   };
 }
+
+---config.json---
+{ "prefix": ">" }
+
+---readme.md---
+# local-scripts
+
+Type `>` to enter local script mode.
 ```
-
----
-
-## 10. Compatibilidad futura
-
-- `.rmod/v1` queda estable.
-- Cambios incompatibles requieren nuevo magic, por ejemplo `#!rmod/v2`.
-- Nuevos bloques opcionales pueden agregarse si son ignorables por runtimes v1.
-- El formato debe seguir siendo legible como texto plano.

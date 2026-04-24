@@ -1,49 +1,49 @@
 # MODULES AUTHORING GUIDE v1
 
-Estado: Frozen v1
+Status: Frozen v1
 
-Guía oficial para crear módulos `rmenu` en formato `.rmod` y formato carpeta.
+Official guide for creating `rmenu` modules in `.rmod` and directory formats.
 
 ---
 
-## 1. Leer primero
+## 1. Read first
 
-Orden recomendado:
+Recommended order:
 
 1. `MODULES_ARCHITECTURE.md`
 2. `MODULES_QUICKSTART.md`
 3. `MODULES_API_SPEC_V1.md`
-4. `RMOD_SPEC_V1.md` o `MANIFEST_SPEC_V1.md`
+4. `RMOD_SPEC_V1.md` or `MANIFEST_SPEC_V1.md`
 5. `MODULES_CAPABILITIES_MATRIX.md`
 6. `MODULES_OPERATIONS_GUIDE.md`
 
-Regla central:
+Core rule:
 
-> Módulo declara intención; core valida, ejecuta y renderiza realidad.
+> A module declares intent; the core validates, executes, and renders reality.
 
 ---
 
-## 2. Elegir formato
+## 2. Choose a format
 
-### `.rmod` — recomendado para distribución
+### `.rmod` — recommended for distribution
 
-- Un solo archivo.
-- Fácil de compartir.
-- Fácil de versionar.
-- No requiere carpeta auxiliar.
+- Single file.
+- Easy to share.
+- Easy to version.
+- No auxiliary folder required.
 
-### Carpeta — recomendado para desarrollo
+### Directory — recommended for development
 
-- Edición cómoda de `module.js`.
-- Manifest separado.
-- `config.json` y `README.md` simples.
-- Mejor para hot reload durante iteración.
+- Convenient editing of `module.js`.
+- Separate manifest.
+- Simple `config.json` and `README.md`.
+- Better for hot reload while iterating.
 
 ---
 
 ## 3. Capabilities
 
-Declarar solo lo necesario.
+Declare only what is needed.
 
 Capabilities v1:
 
@@ -53,11 +53,11 @@ Capabilities v1:
 - `input-accessory`
 - `keys`
 
-Si un módulo intenta usar una operación sin capability, el runtime bloquea la operación y registra `permission_denied`.
+If a module attempts an operation without the required capability, the runtime blocks it and records `permission_denied`.
 
 ---
 
-## 4. Estructura mínima `.rmod`
+## 4. Minimum `.rmod` structure
 
 ```txt
 #!rmod/v1
@@ -85,14 +85,14 @@ export default function createModule() {
 }
 ```
 
-Bloques opcionales:
+Optional blocks:
 
 - `---config.json---`
 - `---readme.md---`
 
 ---
 
-## 5. Estructura mínima en carpeta
+## 5. Minimum directory structure
 
 ```text
 modules/
@@ -114,11 +114,11 @@ enabled = true
 priority = 0
 ```
 
-`module.js` usa el mismo patrón que el bloque `module.js` del `.rmod`.
+`module.js` uses the same pattern as the `.rmod` `module.js` block.
 
 ---
 
-## 6. Modelo de item público
+## 6. Public item model
 
 ```ts
 type Item = {
@@ -133,16 +133,16 @@ type Item = {
 }
 ```
 
-Reglas:
+Rules:
 
-- `id` y `title` son obligatorios.
-- `target` indica destino ejecutable/lanzable.
-- Campos largos o inválidos pueden ser truncados o descartados.
-- El core decide merge, dedupe, ranking y render final.
+- `id` and `title` are required.
+- `target` indicates the executable/launchable destination.
+- Long or invalid fields may be truncated or discarded.
+- The core decides final merge, dedupe, ranking, and rendering.
 
 ---
 
-## 7. Hooks principales
+## 7. Main hooks
 
 ### Provider
 
@@ -152,7 +152,7 @@ provideItems(query, ctx) {
 }
 ```
 
-Requiere `providers`.
+Requires `providers`.
 
 ### Decorator
 
@@ -162,7 +162,7 @@ decorateItems(items, ctx) {
 }
 ```
 
-Requiere `decorate-items`.
+Requires `decorate-items`.
 
 ### Command
 
@@ -171,7 +171,7 @@ onCommand(command, args, ctx) {
 }
 ```
 
-Requiere `commands`.
+Requires `commands`.
 
 ### Key hook
 
@@ -180,77 +180,127 @@ onKey(event, ctx) {
 }
 ```
 
-Requiere `keys`.
+Requires `keys`.
 
 ---
 
-## 8. Comandos y namespacing
+## 8. Commands and namespacing
 
-Formato recomendado:
+Recommended format:
 
 ```text
-/modulo::comando
+/module::command
 ```
 
-Reglas:
+Rules:
 
-- alias sin namespace se permite solo si no hay colisión,
-- si hay colisión, usar namespace explícito,
-- nombres vacíos o ambiguos se rechazan.
-
----
-
-## 9. Quick select y decoraciones
-
-`quickSelectKey` debe ser una tecla visible simple: `1` a `9` o `0`.
-
-Reglas:
-
-- el core resuelve conflictos,
-- el primer item visible gana,
-- duplicados posteriores pueden perder key/badge,
-- `hint` y `badge` pueden truncarse por layout.
+- aliases without namespace are allowed only when there is no collision;
+- if there is a collision, use the explicit namespace;
+- empty or ambiguous names are rejected.
 
 ---
 
-## 10. Reglas de diseño para autores
+## 9. Quick select and decorations
 
-1. Hooks rápidos y deterministas.
-2. No bloquear I/O sin timeout propio.
-3. Providers deben devolver pocos items relevantes.
-4. No asumir control de UI o píxeles.
-5. Normalizar inputs internos antes de procesar.
-6. Tratar errores como recuperables.
-7. Loggear contexto útil.
-8. No depender de internals del core.
-9. No declarar capabilities “por si acaso”.
-10. Probar con `--modules-debug`.
+`quickSelectKey` must be a simple visible key: `1` to `9` or `0`.
+
+Rules:
+
+- the core resolves conflicts;
+- the first visible item wins;
+- later duplicates may lose the key/badge;
+- `hint` and `badge` may be truncated by layout.
 
 ---
 
-## 11. Validación y seguridad IPC
+## 10. Pattern: scoped intent mode
 
-El runtime puede recortar, normalizar o descartar:
+Use this pattern when a module needs a scoped search that should not compete with the global launcher.
 
-- campos obligatorios vacíos,
-- strings fuera de límites,
-- quick select inválido,
-- payload excesivo,
-- valores no válidos.
+Example implemented by `local-scripts`:
 
-Autores no deben depender de payload sin filtrar.
+```text
+>       # list local scripts
+> bu    # filter local scripts
+build   # normal global launcher
+```
+
+Rules:
+
+- use an explicit intent prefix;
+- do not provide local results for ambiguous global searches;
+- sort inside the module: exact, prefix, contains, alphabetical;
+- call `ctx.replaceItems(items)` to replace the visible list for the scoped mode;
+- use `InputAccessory` for short feedback, for example `local scripts: 2`;
+- do not use `ProviderDef.priority`, `hint`, `badge`, or magic strings to manipulate global ranking.
+
+Minimum example:
+
+```js
+export default function createModule() {
+  return {
+    onQueryChange(query, ctx) {
+      if (!query.startsWith(">")) return;
+      const term = query.slice(1).trim().toLowerCase();
+      const items = scripts
+        .filter((script) => script.name.toLowerCase().includes(term))
+        .map((script) => ({
+          id: `scripts::${script.name}`,
+          title: script.name,
+          subtitle: script.path,
+          target: script.target,
+          badge: script.name.toLowerCase() === term ? "exact" : script.ext
+        }));
+
+      ctx.setInputAccessory({ text: `local scripts: ${items.length}`, kind: "info" });
+      ctx.replaceItems(items);
+    }
+  };
+}
+```
+
+This pattern keeps two UX paths separate: passive global launcher and explicit local mode.
 
 ---
 
-## 12. Workflow recomendado
+## 11. Design rules for authors
 
-1. Crear módulo en carpeta.
-2. Declarar metadata mínima.
-3. Declarar capabilities mínimas.
-4. Implementar un hook.
-5. Ejecutar `rmenu.exe --modules-debug`.
-6. Probar comportamiento en launcher.
-7. Revisar errores recientes.
-8. Iterar con `/modules.reload`.
-9. Congelar versión.
-10. Empaquetar como `.rmod` para distribuir.
+1. Hooks must be fast and deterministic.
+2. Do not block on I/O without your own timeout.
+3. Providers should return a small set of relevant items.
+4. Do not assume control of UI or pixels.
+5. Normalize internal inputs before processing.
+6. Treat errors as recoverable.
+7. Log useful context.
+8. Do not depend on core internals.
+9. Do not declare capabilities “just in case”.
+10. Test with `--modules-debug`.
+
+---
+
+## 12. IPC validation and safety
+
+The runtime may trim, normalize, or discard:
+
+- empty required fields,
+- strings beyond limits,
+- invalid quick-select keys,
+- oversized payloads,
+- invalid values.
+
+Authors must not depend on unfiltered payloads.
+
+---
+
+## 13. Recommended workflow
+
+1. Create a directory module.
+2. Declare minimum metadata.
+3. Declare minimum capabilities.
+4. Implement one hook.
+5. Run `rmenu.exe --modules-debug`.
+6. Test behavior in the launcher.
+7. Check recent errors.
+8. Iterate with `/modules.reload`.
+9. Freeze the version.
+10. Package as `.rmod` for distribution.

@@ -1,400 +1,323 @@
 # CORE CLOSURE CHECKLIST — rmenu
 
-Estado: Draft operativo  
-Objetivo: cerrar el core de `rmenu` como plataforma estable y mover la evolución futura hacia módulos.
+Status: Operational draft  
+Goal: close the `rmenu` core as a stable platform and move future feature work to modules.
 
 ---
 
-## Principio rector
+## Guiding principle
 
-El core se considera cerrado cuando puede sostener módulos reales sin cambios estructurales frecuentes.
+The core is closed when it can support real modules without frequent structural changes.
 
-Regla principal:
+Main rule:
 
-> Si una funcionalidad puede implementarse como módulo, no entra al core.
+> If a feature can be implemented as a module, it does not belong in the core.
 
-Cambios futuros al core solo se aceptan por:
+Future core changes are accepted only for:
 
-- bug crítico,
+- critical bug,
 - crash,
-- seguridad/aislamiento,
+- security/isolation,
 - performance,
-- compatibilidad Windows,
-- corrección de contrato v1,
-- necesidad general demostrada por varios módulos reales.
+- Windows compatibility,
+- v1 contract correction,
+- general need demonstrated by several real modules.
 
 ---
 
-# Fase 1 — Documentación, vocabulario y frontera arquitectónica
+# Phase 1 — Documentation, vocabulary, and architecture boundary
 
-Esta fase no debería requerir cambios de código.
+Status: mostly complete.
 
-## 1.1 Documento constitucional de arquitectura
+## 1.1 Architecture constitution
 
-- [x] Crear `MODULES_ARCHITECTURE.md` en el root.
-- [x] Definir qué es el core de `rmenu`.
-- [x] Definir qué no es el core.
-- [x] Definir que el core es autoridad sobre UI, ranking, estado, ejecución y policy.
-- [x] Definir que los módulos extienden por composición, no por mutación.
-- [x] Definir la frontera entre core, runtime de módulos, module host y módulos de usuario.
-- [x] Definir la política de estabilidad de API v1.
-- [x] Definir la política para cambios breaking futuros.
-- [x] Definir criterios para aceptar una nueva primitiva en el core.
-- [x] Definir criterios para rechazar una feature y mandarla a módulo.
+- [x] Create `MODULES_ARCHITECTURE.md`.
+- [x] Define what the `rmenu` core is.
+- [x] Define what the core is not.
+- [x] Define the core as authority over UI, ranking, state, execution, and policy.
+- [x] Define that modules extend by composition, not mutation.
+- [x] Define boundaries between core, module runtime, module host, and user modules.
+- [x] Define v1 API stability policy.
+- [x] Define future breaking-change policy.
+- [x] Define criteria for accepting a new core primitive.
+- [x] Define criteria for rejecting a feature and sending it to a module.
 
-## 1.2 Vocabulario oficial v1
+## 1.2 Official v1 vocabulary
 
-- [x] Congelar el vocabulario oficial de módulos v1.
-- [x] Documentar `Providers` como primitiva para aportar items.
-- [x] Documentar `Commands` como primitiva para acciones invocables.
-- [x] Documentar `Decorations` como primitiva para enriquecer items visualmente.
-- [x] Documentar `Input Accessory` como primitiva para estado contextual del input.
-- [x] Documentar `Capabilities` como sistema de permisos declarativos.
-- [x] Documentar `Key Hooks` como manejo controlado de teclas.
-- [x] Documentar `Runtime Actions` como mutaciones permitidas del estado.
-- [x] Declarar explícitamente que no hay nuevas primitivas v1 salvo necesidad probada.
+- [x] Freeze official v1 module vocabulary.
+- [x] Document Providers.
+- [x] Document Commands.
+- [x] Document Decorations.
+- [x] Document Input Accessory.
+- [x] Document Capabilities.
+- [x] Document Key Hooks.
+- [x] Document Runtime Actions.
+- [x] State that no new v1 primitives are added without proven need.
 
-## 1.3 Límites explícitos para módulos
+## 1.3 Explicit module limits
 
-- [x] Documentar que módulos no pueden dibujar UI directamente.
-- [x] Documentar que módulos no pueden acceder a Win32/GDI.
-- [x] Documentar que módulos no pueden modificar layout global.
-- [x] Documentar que módulos no pueden reemplazar el ranking engine.
-- [x] Documentar que módulos no pueden mutar estado arbitrariamente.
-- [x] Documentar que módulos no pueden saltarse capabilities.
-- [x] Documentar que módulos no pueden depender de internals del core.
-- [x] Documentar que módulos deben operar mediante hooks, ctx y actions oficiales.
+- [x] Modules cannot draw UI directly.
+- [x] Modules cannot access Win32/GDI.
+- [x] Modules cannot modify global layout.
+- [x] Modules cannot replace the ranking engine.
+- [x] Modules cannot mutate arbitrary state.
+- [x] Modules cannot bypass capabilities.
+- [x] Modules cannot depend on core internals.
+- [x] Modules must operate through public hooks, `ctx`, and actions.
 
-## 1.4 Congelamiento de specs públicas
+## 1.4 Public specs freeze
 
-- [x] Revisar `MODULES_API_SPEC_V1.md`.
-- [x] Marcar `MODULES_API_SPEC_V1.md` como `Frozen v1` o dejar explícito qué falta para freeze.
-- [x] Revisar `RMOD_SPEC_V1.md`.
-- [x] Marcar `RMOD_SPEC_V1.md` como `Frozen v1` o dejar explícito qué falta para freeze.
-- [x] Revisar `MANIFEST_SPEC_V1.md`.
-- [x] Marcar `MANIFEST_SPEC_V1.md` como `Frozen v1` o dejar explícito qué falta para freeze.
-- [x] Revisar `CTX_ACTIONS_SPEC_V1.md`.
-- [x] Confirmar que no contradice `MODULES_API_SPEC_V1.md`.
-- [x] Revisar `PROVIDER_EXECUTION_POLICY.md`.
-- [x] Confirmar que describe la política real del runtime.
-- [x] Revisar `ERROR_ISOLATION_POLICY.md`.
-- [x] Confirmar que describe la política real de errores, timeouts y degradación.
+- [x] Review `MODULES_API_SPEC_V1.md`.
+- [x] Review `RMOD_SPEC_V1.md`.
+- [x] Review `MANIFEST_SPEC_V1.md`.
+- [x] Review `CTX_ACTIONS_SPEC_V1.md`.
+- [x] Review `PROVIDER_EXECUTION_POLICY.md`.
+- [x] Review `ERROR_ISOLATION_POLICY.md`.
 
-## 1.5 Política de evolución futura
+## 1.5 Future evolution policy
 
-- [x] Crear una sección `Core Change Policy` en `MODULES_ARCHITECTURE.md` o archivo equivalente.
-- [x] Definir que toda feature nueva debe intentarse primero como módulo.
-- [x] Definir que una nueva capability no implica automáticamente nueva primitiva.
-- [x] Definir que una nueva primitiva requiere evidencia desde módulos reales.
-- [x] Definir que cambios de ergonomía/helpers no justifican tocar core si no desbloquean capacidades generales.
-- [x] Definir cómo se propone una extensión de API v2.
-- [x] Definir cómo se depreca una API existente.
-- [x] Definir cómo se documentan decisiones arquitectónicas futuras.
+- [x] Add Core Change Policy to `MODULES_ARCHITECTURE.md`.
+- [x] Require new features to be attempted as modules first.
+- [x] Clarify that a new capability does not imply a new primitive.
+- [x] Require evidence from real modules for new primitives.
+- [x] Define API v2 proposal process.
+- [x] Define deprecation process.
+- [x] Document future architecture decisions in `DECISIONS.md`.
 
-## 1.6 Limpieza y orden documental
+## 1.6 Documentation cleanup
 
-- [x] Decidir ubicación oficial de specs: root o `docs/`.
-- [x] Decidir ubicación oficial de documentación histórica: `extras/private-docs/` o `docs/audits/`.
-- [x] Eliminar o mover duplicados documentales.
-- [x] Confirmar que el root no mezcla specs oficiales con reportes históricos ambiguos.
-- [x] Actualizar `README.md` para reflejar que `rmenu` es launcher + plataforma modular.
-- [x] Agregar en `README.md` una sección corta sobre módulos.
-- [x] Agregar en `README.md` enlaces a specs oficiales.
-- [x] Agregar en `README.md` comandos de diagnóstico relevantes: `--metrics`, `--debug-ranking`, `--modules-debug`, `--reindex`.
-- [x] Actualizar o crear guía corta: “cómo instalar un módulo”.
-- [x] Actualizar o crear guía corta: “cómo desarrollar un módulo”.
-- [x] Actualizar o crear guía corta: “cómo debuggear un módulo”.
+- [x] Keep official specs at repository root.
+- [x] Move historical docs to `docs/historico/`.
+- [x] Remove or move ambiguous duplicates.
+- [x] Update `README.md` to present `rmenu` as launcher + module platform.
+- [x] Add module documentation links.
+- [x] Document diagnostic commands: `--metrics`, `--debug-ranking`, `--modules-debug`, `--reindex`.
+- [x] Create install/develop/debug module guides.
 
-## 1.7 Madurez de metadata y presentación del proyecto
+## 1.7 Project metadata
 
-- [x] Revisar `Cargo.toml`.
-- [x] Reemplazar author placeholder.
-- [x] Revisar descripción del paquete.
-- [x] Confirmar versión actual.
-- [x] Confirmar licencia.
-- [x] Confirmar que `include` contiene archivos necesarios y no basura.
-- [x] Revisar `.gitignore`.
-- [x] Confirmar que binarios, caches y artifacts pesados no se trackean.
-- [x] Confirmar que ejemplos, templates y docs importantes sí se trackean.
+- [x] Review `Cargo.toml`.
+- [x] Replace placeholder author.
+- [x] Review package description, version, license, include list, and `.gitignore`.
 
 ---
 
-# Fase 2 — Validación con módulos reales, sin tocar core
+# Phase 2 — Validation with real modules, without core-specific features
 
-Objetivo: demostrar que el core actual alcanza para construir extensiones útiles.
+Goal: prove that the current core is enough to build useful extensions.
 
-## 2.1 Módulo real: calculator
+## 2.1 Real module: calculator
 
-Estado: validado manualmente.
+Status: manually validated.
 
-Implementación:
+Implementation:
 
-- Archivo: `modules/calculator.rmod`.
-- Detecta cálculos simples escritos directamente, sin prefijo obligatorio (`2+2`, `(2+3)*4`, `10/2`).
-- Muestra el resultado como `=<resultado>` en la misma barra de input mediante `InputAccessory` `success`.
-- No agrega resultados a la lista inferior; cuando hay cálculo válido, reemplaza los items visibles con lista vacía mediante `ctx.replaceItems([])`.
-- Declara capability mínima: `input-accessory`.
-- No usa `providers`, `keys`, `commands` ni `decorate-items`.
+- File: `modules/calculator.rmod`.
+- Detects simple calculations typed directly, with no mandatory `=` prefix.
+- Shows result as `=<result>` in the input bar through `InputAccessory` kind `success`.
+- Uses `ctx.replaceItems([])` to clear fuzzy results while the calculation is valid.
+- Declares only `input-accessory`.
+- Contains no calculator logic in the core.
 
-Fricciones encontradas y resueltas:
+Friction found and resolved:
 
-- El host externo exponía `ctx.setInputAccessory`/`ctx.clearInputAccessory` como no-op. Se habilitó devolución de actions desde `.rmod` al core.
-- El accessory se renderizaba con prefijo de kind (`[success] =4`). Se cambió para renderizar solo el texto, manteniendo el color por kind.
-- El runtime registraba `permission_denied` para hooks no declarados. Se cambió a no invocar hooks externos sin capability.
-- El fuzzy/ranking seguía actualizando la lista inferior durante cálculos. Se habilitó `ctx.replaceItems([])` desde módulos externos y el ciclo de UI respeta ese reemplazo.
+- External host action return path was enabled for `setInputAccessory`, `clearInputAccessory`, and `replaceItems`.
+- Input accessory rendering no longer shows `[success]` prefix.
+- Hooks without declared capability are not invoked, avoiding noisy `permission_denied` logs.
+- The UI cycle respects `replaceItems([])`.
 
 Checklist:
 
-- [x] Crear módulo calculator como `.rmod` o carpeta dev.
-- [x] Detectar queries tipo cálculo simple sin prefijo obligatorio.
-- [x] Mostrar resultado vía `Input Accessory`.
-- [x] Aportar item de resultado vía `Provider` si corresponde. No corresponde para UX actual; el resultado vive en la barra.
-- [ ] Ejecutar acción de copiar/usar resultado mediante action oficial. Pendiente para una iteración futura si se define UX de submit/copiar.
-- [x] Declarar capabilities mínimas necesarias.
-- [x] Confirmar que no requiere lógica específica de calculator en el core.
-- [x] Documentar fricciones encontradas.
+- [x] Create calculator module.
+- [x] Detect calculation queries.
+- [x] Show result through Input Accessory.
+- [x] Decide that provider item is not needed for current UX.
+- [ ] Optional: define copy/use-result UX through an official action.
+- [x] Declare minimal capabilities.
+- [x] Confirm no calculator-specific core logic.
+- [x] Document friction.
 
-## 2.2 Módulo real: scripts/commands
+## 2.2 Real module: scripts/commands
 
-- [ ] Crear módulo que liste scripts o comandos locales.
-- [ ] Aportar items vía `Provider`.
-- [ ] Usar badges/hints/subtitles para mostrar metadata.
-- [ ] Registrar comandos con namespace estable.
-- [ ] Ejecutar acción sin acceso directo a internals.
-- [ ] Confirmar dedupe y ranking aceptables.
-- [ ] Confirmar que no requiere cambios al core.
-- [ ] Documentar fricciones encontradas.
+Status: validated with `modules/local-scripts.rmod`, except optional namespaced commands.
 
-## 2.3 Módulo real: hotkeys/quick actions
+UX decision:
 
-- [ ] Crear módulo que use quick select keys o key hooks.
-- [ ] Declarar capability `keys`.
-- [ ] Confirmar que key hooks se deniegan sin capability.
-- [ ] Confirmar comportamiento ante duplicados de quick select.
-- [ ] Confirmar que warnings/debug son entendibles.
-- [ ] Confirmar que no requiere cambios al core.
-- [ ] Documentar fricciones encontradas.
+- `>` lists local scripts.
+- `> term` filters local scripts.
+- Without `>`, the global launcher is unchanged.
+- The module uses `ctx.replaceItems(...)` for scoped mode and avoids competing with global fuzzy/core ranking.
 
-## 2.4 Revisión de fricciones
+Checklist:
 
-- [ ] Clasificar cada fricción como bug, falta de docs, ergonomía, feature específica o falta real de primitiva.
-- [ ] Resolver primero docs antes que código si el problema es ambigüedad.
-- [ ] Rechazar cambios de core si solo hacen más cómodo un caso aislado.
-- [ ] Aceptar cambios de core solo si desbloquean varios módulos o corrigen contrato.
+- [x] Create module that lists local scripts/commands.
+- [x] Use badges/hints/subtitles for metadata.
+- [ ] Optional: register stable namespaced commands.
+- [x] Execute action without direct access to internals.
+- [x] Confirm dedupe/ranking is acceptable in scoped mode.
+- [x] Manually confirm script execution with Enter.
+- [x] Confirm no conceptual core change is required.
+- [x] Document friction.
 
----
+## 2.3 Real module: hotkeys/quick actions
 
-# Fase 3 — Hardening funcional del core existente
+Status: pending.
 
-Objetivo: cerrar huecos reales sin ampliar superficie conceptual.
+- [ ] Create a module using quick-select keys or key hooks.
+- [ ] Declare `keys` capability.
+- [ ] Confirm denial without capability.
+- [ ] Confirm duplicate quick-select behavior.
+- [ ] Confirm warnings/debug output are understandable.
+- [ ] Confirm no core change is required.
+- [ ] Document friction.
 
-## 3.1 Runtime y module host
+## 2.4 Friction review
 
-- [ ] Confirmar que cada módulo externo corre aislado del core.
-- [ ] Confirmar que timeout por request funciona.
-- [ ] Confirmar que host colgado se mata o degrada correctamente.
-- [ ] Confirmar que auto-restart respeta backoff.
-- [ ] Confirmar que auto-disable ocurre tras umbrales configurados.
-- [ ] Confirmar que reload exitoso resetea contadores relevantes.
-- [ ] Confirmar que errores de un módulo no rompen otros módulos.
-- [ ] Confirmar que `--modules-debug` muestra estado, errores, telemetría y capacidades.
+- [ ] Classify each friction as bug, missing docs, ergonomics, feature-specific need, or real primitive gap.
+- [ ] Prefer docs fixes before code if ambiguity is the issue.
+- [ ] Reject core changes that only improve one isolated case.
+- [ ] Accept core changes only when they unblock several modules or correct the contract.
 
-## 3.2 Loader `.rmod` y directorio
+Known frictions:
 
-- [ ] Confirmar descubrimiento mixto de módulos por carpeta y `.rmod`.
-- [ ] Confirmar normalización común a `ModuleDescriptor`.
-- [ ] Confirmar errores claros para `.rmod` inválido.
-- [ ] Confirmar errores claros para `module.toml` inválido.
-- [ ] Confirmar que módulos deshabilitados no se cargan.
-- [ ] Confirmar prioridad determinista.
-- [ ] Confirmar hot reload por módulo afectado.
-- [ ] Confirmar debounce contra loops de reload.
-- [ ] Confirmar comportamiento si un módulo cambia mientras está en uso.
-
-## 3.3 Capabilities y permisos
-
-- [ ] Confirmar que `registerProvider` requiere capability correspondiente.
-- [ ] Confirmar que `registerCommand` requiere capability correspondiente.
-- [ ] Confirmar que `setInputAccessory` requiere capability correspondiente.
-- [ ] Confirmar que `onKey`/key hooks requieren capability correspondiente.
-- [ ] Confirmar que violaciones se registran como `permission_denied`.
-- [ ] Confirmar que el módulo sigue aislado tras violación de permisos.
-- [ ] Confirmar que la matriz capability -> acción está documentada y testeada.
-
-## 3.4 Providers, commands y dedupe
-
-- [ ] Confirmar budget global por query para providers.
-- [ ] Confirmar timeout por provider configurable.
-- [ ] Confirmar cap de items por provider.
-- [ ] Confirmar sanitización de items aportados por provider.
-- [ ] Confirmar dedupe determinista.
-- [ ] Confirmar política `core-first`.
-- [ ] Confirmar política `provider-first`.
-- [ ] Confirmar namespace de comandos.
-- [ ] Confirmar resolución de colisiones de comandos.
-- [ ] Confirmar comandos runtime mínimos: list, reload, telemetry reset.
-
-## 3.5 UI primitives v1
-
-- [ ] Confirmar rendering de badge.
-- [ ] Confirmar rendering de badge kind.
-- [ ] Confirmar rendering de hint.
-- [ ] Confirmar rendering de subtitle/source si aplica.
-- [ ] Confirmar rendering de input accessory.
-- [ ] Confirmar colores por `InputAccessory.kind`.
-- [ ] Confirmar prioridad de input accessory.
-- [ ] Confirmar quick select visible.
-- [ ] Confirmar conflicto de quick select duplicado: primer visible gana + warning.
-- [ ] Confirmar layout en anchos extremos.
-- [ ] Confirmar que módulos no pueden dibujar UI custom.
-
-## 3.6 IPC y seguridad operacional
-
-- [ ] Confirmar límite máximo de payload request.
-- [ ] Confirmar límite máximo de payload response.
-- [ ] Confirmar validación estricta de campos obligatorios.
-- [ ] Confirmar límites de longitud para strings.
-- [ ] Confirmar rechazo/sanitización de items inválidos.
-- [ ] Confirmar que payload inválido no crashea el core.
-- [ ] Confirmar que stdout/stderr del host no contamina protocolo si aplica.
-- [ ] Confirmar que errores IPC son visibles en debug.
+1. External modules needed real action return path to core — resolved.
+2. Input accessory rendered `[success]` — resolved.
+3. Undeclared hooks generated noisy permission errors — resolved.
+4. Exact provider intent vs global fuzzy ranking — resolved for `local-scripts` v2 through explicit `>` prefix + `ctx.replaceItems(items)` scoped intent mode.
 
 ---
 
-# Fase 4 — Tests y verificación
+# Phase 3 — Functional hardening of the existing core
 
-## 4.1 Tests automatizados
+Pending:
 
-- [ ] Tests de parser `.rmod` válido.
-- [ ] Tests de parser `.rmod` inválido.
-- [ ] Tests de bloques duplicados.
-- [ ] Tests de bloques faltantes.
-- [ ] Tests de headers obligatorios faltantes.
-- [ ] Tests de `module.toml` válido.
-- [ ] Tests de `module.toml` inválido.
-- [ ] Tests de loader mixto: directorio + `.rmod`.
-- [ ] Tests de capabilities permitidas.
-- [ ] Tests de capabilities denegadas.
-- [ ] Tests de provider timeout.
-- [ ] Tests de provider item cap.
-- [ ] Tests de dedupe.
-- [ ] Tests de command namespace/collision.
-- [ ] Tests de IPC payload limit.
-- [ ] Tests de hot reload.
-- [ ] Tests de host restart/backoff.
-- [ ] Tests de auto-disable por errores/timeouts.
-- [ ] Tests de quick select duplicado.
-- [ ] Tests de input accessory priority/kind.
-
-## 4.2 Comandos de verificación local
-
-- [ ] Ejecutar `cargo fmt`.
-- [ ] Ejecutar `cargo check`.
-- [ ] Ejecutar `cargo test`.
-- [ ] Ejecutar `cargo clippy` si forma parte del flujo del proyecto.
-- [ ] Ejecutar `rmenu --metrics`.
-- [ ] Ejecutar `rmenu --debug-ranking <query>`.
-- [ ] Ejecutar `rmenu --modules-debug`.
-- [ ] Ejecutar prueba manual de launcher mode.
-- [ ] Ejecutar prueba manual de script/dmenu mode con stdin.
-- [ ] Ejecutar prueba manual de script/dmenu mode con `-e`.
-
-## 4.3 Performance mínima aceptable
-
-- [ ] Definir presupuesto objetivo de startup.
-- [ ] Definir presupuesto objetivo de search p95.
-- [ ] Definir presupuesto objetivo de time-to-window-visible.
-- [ ] Definir presupuesto objetivo de provider budget.
-- [ ] Confirmar que módulos lentos no degradan severamente la UI.
-- [ ] Confirmar que cache de índice se invalida correctamente.
-- [ ] Confirmar que `--reindex` funciona.
+- [ ] Confirm each external module runs isolated from the core.
+- [ ] Confirm request timeout works.
+- [ ] Confirm hung hosts are killed or degraded correctly.
+- [ ] Confirm auto-restart respects backoff.
+- [ ] Confirm auto-disable after thresholds.
+- [ ] Confirm successful reload resets relevant counters.
+- [ ] Confirm one module's errors do not break others.
+- [ ] Confirm `--modules-debug` exposes state, errors, telemetry, and capabilities.
+- [ ] Confirm mixed discovery of directory modules and `.rmod` files.
+- [ ] Confirm clear errors for invalid `.rmod` and `module.toml`.
+- [ ] Confirm disabled modules are not loaded.
+- [ ] Confirm deterministic priority.
+- [ ] Confirm hot reload and debounce behavior.
+- [ ] Confirm capability enforcement for providers, commands, input accessory, and keys.
+- [ ] Confirm provider budgets, timeouts, item caps, sanitization, dedupe, and command collisions.
+- [ ] Confirm UI primitive rendering for badges, hints, subtitles, input accessory, quick select, and narrow widths.
+- [ ] Confirm IPC payload limits and invalid payload handling.
 
 ---
 
-# Fase 5 — Pulido final de producto/core
+# Phase 4 — Tests and verification
 
-## 5.1 UX base
+## 4.1 Automated tests to add
 
-- [ ] Confirmar que launcher mode sigue siendo simple y rápido sin módulos.
-- [ ] Confirmar que no hay regresión en fuzzy/ranking.
-- [ ] Confirmar labels amigables para apps.
-- [ ] Confirmar búsqueda por nombre técnico del ejecutable.
-- [ ] Confirmar launch vía ShellExecuteW.
-- [ ] Confirmar fallback controlado de launch.
-- [ ] Confirmar historial persistente.
-- [ ] Confirmar blacklist/source boosts desde config.
+- [ ] Valid/invalid `.rmod` parser tests.
+- [ ] Duplicate/missing block tests.
+- [ ] Valid/invalid `module.toml` tests.
+- [ ] Mixed loader tests.
+- [ ] Capability allow/deny tests.
+- [ ] Provider timeout and item cap tests.
+- [ ] Dedupe tests.
+- [ ] Command namespace/collision tests.
+- [ ] IPC payload limit tests.
+- [ ] Hot reload tests.
+- [ ] Host restart/backoff tests.
+- [ ] Auto-disable tests.
+- [ ] Duplicate quick-select tests.
+- [ ] Input accessory priority/kind tests.
 
-## 5.2 Configuración
+## 4.2 Local verification commands
 
-- [ ] Revisar `config_example.ini` completo.
-- [ ] Documentar sección `[Modules]`.
-- [ ] Documentar timeout, budget, item caps y payload limits.
-- [ ] Documentar política de dedupe.
-- [ ] Documentar hot reload si es configurable.
-- [ ] Confirmar defaults seguros.
-- [ ] Confirmar que config inválida no crashea.
+- [ ] `cargo fmt`
+- [x] `cargo check`
+- [x] `cargo test`
+- [ ] `cargo clippy` if adopted by the project flow.
+- [ ] `rmenu --metrics`
+- [ ] `rmenu --debug-ranking <query>`
+- [x] `rmenu --modules-debug`
+- [ ] Manual launcher mode test.
+- [ ] Manual stdin/script mode test.
 
-## 5.3 Distribución de módulos
+## 4.3 Minimum performance targets
 
-- [ ] Definir ubicación estándar local de módulos.
-- [ ] Definir estructura recomendada para módulos de ejemplo.
-- [ ] Definir convención de nombres.
-- [ ] Definir convención de capabilities.
-- [ ] Definir convención de comandos namespaced.
-- [ ] Definir cómo compartir `.rmod`.
-- [ ] Definir cómo versionar módulos.
-
----
-
-# Fase 6 — Declaración de freeze
-
-## 6.1 Checklist final antes de freeze
-
-- [ ] `MODULES_ARCHITECTURE.md` existe y está aprobado.
-- [ ] Specs v1 están revisadas y congeladas.
-- [ ] README refleja arquitectura actual.
-- [ ] Docs duplicadas o históricas están ordenadas.
-- [ ] Metadata del proyecto está limpia.
-- [ ] Tres módulos reales funcionan sin tocar core.
-- [ ] Fricciones de módulos están clasificadas.
-- [ ] Bugs bloqueantes están corregidos.
-- [ ] Tests/verificaciones están verdes.
-- [ ] Performance mínima está validada.
-- [ ] Política de cambios futuros al core está escrita.
-
-## 6.2 Declaración formal
-
-- [ ] Crear nota `CORE_FREEZE_V1.md` o sección equivalente en `MODULES_ARCHITECTURE.md`.
-- [ ] Declarar fecha de freeze.
-- [ ] Declarar alcance del core congelado.
-- [ ] Declarar API de módulos congelada.
-- [ ] Declarar qué tipos de cambios al core siguen permitidos.
-- [ ] Declarar que nuevas features deben implementarse primero como módulos.
+- [ ] Define startup budget.
+- [ ] Define search p95 budget.
+- [ ] Define time-to-window-visible budget.
+- [ ] Define provider budget.
+- [ ] Confirm slow modules do not severely degrade UI.
+- [ ] Confirm index cache invalidation and `--reindex`.
 
 ---
 
-# Definition of Done — Core Cerrado v1
+# Phase 5 — Product/core polish
 
-El core de `rmenu` se considera cerrado cuando:
+Pending:
 
-- la frontera core/módulos está documentada,
-- el vocabulario v1 está congelado,
-- las specs públicas no se contradicen,
-- existen módulos reales que validan la API,
-- el runtime externo es robusto ante errores,
-- capabilities se enforcean,
-- UI primitives v1 son suficientes para módulos útiles,
-- tests y checks principales pasan,
-- el repo está ordenado,
-- y existe una política explícita para impedir expansión accidental del core.
+- [ ] Validate base launcher UX without modules.
+- [ ] Confirm no fuzzy/ranking regression.
+- [ ] Confirm friendly app labels and executable-name search.
+- [ ] Confirm ShellExecuteW launch and controlled fallback.
+- [ ] Confirm persistent history.
+- [ ] Review `config_example.ini`.
+- [ ] Document `[Modules]` config fully.
+- [ ] Confirm safe defaults and invalid-config behavior.
+- [ ] Define standard module location, examples, naming, capabilities, command namespace, sharing, and versioning.
 
-A partir de ese punto, el trabajo principal pasa a ser:
+---
 
-- nuevos módulos,
-- mejores módulos,
-- templates,
-- documentación para autores,
-- polish visual dentro de primitivas existentes,
-- bugfixes,
-- performance,
-- y evolución futura controlada.
+# Phase 6 — Freeze declaration
+
+Do not start yet.
+
+Blockers:
+
+- need at least three real modules validated,
+- need hardening,
+- need specific tests,
+- need minimum performance validation.
+
+## Final checklist before freeze
+
+- [ ] `MODULES_ARCHITECTURE.md` exists and is approved.
+- [ ] v1 specs are reviewed and frozen.
+- [ ] README reflects current architecture.
+- [ ] Duplicate/historical docs are ordered.
+- [ ] Project metadata is clean.
+- [ ] Three real modules work without touching core.
+- [ ] Module frictions are classified.
+- [ ] Blocking bugs are fixed.
+- [ ] Tests/verifications are green.
+- [ ] Minimum performance is validated.
+- [ ] Future core-change policy is written.
+
+## Formal declaration
+
+- [ ] Create `CORE_FREEZE_V1.md` or equivalent section in `MODULES_ARCHITECTURE.md`.
+- [ ] Declare freeze date.
+- [ ] Declare frozen core scope.
+- [ ] Declare frozen module API.
+- [ ] Declare allowed future core changes.
+- [ ] Declare that new features must be implemented as modules first.
+
+---
+
+# Definition of Done — Core Closed v1
+
+The `rmenu` core is considered closed when:
+
+- the core/module boundary is documented,
+- v1 vocabulary is frozen,
+- public specs do not contradict each other,
+- real modules validate the API,
+- the external runtime is robust against errors,
+- capabilities are enforced,
+- v1 UI primitives are sufficient for useful modules,
+- main tests/checks pass,
+- the repository is ordered,
+- and explicit policy prevents accidental core expansion.
+
+After that, primary work moves to modules, templates, docs, visual polish within existing primitives, bug fixes, performance, and controlled future evolution.

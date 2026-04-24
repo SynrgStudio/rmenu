@@ -1,76 +1,77 @@
 # MODULES CAPABILITIES MATRIX v1
 
-Estado: Frozen v1
+Status: Frozen v1
 
-Tabla oficial capability -> operaciones permitidas/enforced.
-
-| Capability | Operaciones habilitadas | Enforcement | Sin permiso |
+| Capability | Allows | Required | If missing |
 |---|---|---|---|
-| `providers` | `provideItems`, `ctx.registerProvider` | Sí | `permission_denied`, se ignora operación |
-| `commands` | `onCommand`, `ctx.registerCommand` | Sí | `permission_denied`, se ignora operación |
-| `decorate-items` | `decorateItems` | Sí | `permission_denied`, no se aplica decoración |
-| `input-accessory` | `ctx.setInputAccessory`, `ctx.clearInputAccessory` | Sí | `permission_denied`, no cambia accessory |
-| `keys` | `onKey` | Sí | `permission_denied`, no se enruta evento |
+| `providers` | `provideItems`, `ctx.registerProvider` | Yes | `permission_denied`, operation ignored |
+| `commands` | `onCommand`, `ctx.registerCommand` | Yes | `permission_denied`, operation ignored |
+| `decorate-items` | `decorateItems` | Yes | `permission_denied`, decoration not applied |
+| `input-accessory` | `ctx.setInputAccessory`, `ctx.clearInputAccessory` | Yes | `permission_denied`, accessory unchanged |
+| `keys` | `onKey` | Yes | `permission_denied`, event not routed |
 
 ---
 
-## 1. Reglas de enforcement
+## 1. Enforcement rules
 
-1. El manifest declara intención.
-2. El runtime valida capability antes de operación sensible.
-3. En ausencia de capability, la operación se rechaza.
-4. El rechazo no rompe el runtime global.
-5. El rechazo registra módulo + operación + capability requerida.
+1. The manifest declares intent.
+2. The runtime validates capability before sensitive operations.
+3. Without the capability, the operation is rejected.
+4. The module remains isolated.
+5. Rejection records module + operation + required capability.
 
 ---
 
-## 2. Declaración mínima recomendada
+## 2. Recommended minimum declaration
 
-Declarar solo lo necesario.
+Declare the smallest set that supports the module behavior.
 
-Ejemplos:
+Examples:
 
-### Provider simple
+### Pure provider
 
 ```toml
 capabilities = ["providers"]
 ```
 
-### Provider que decora items
-
-```toml
-capabilities = ["providers", "decorate-items"]
-```
-
-### Módulo con comandos
+### Module with commands
 
 ```toml
 capabilities = ["commands"]
 ```
 
-### Módulo con quick keys/key hooks
+### Module with input accessory
+
+```toml
+capabilities = ["input-accessory"]
+```
+
+### Module with quick keys/key hooks
 
 ```toml
 capabilities = ["keys"]
 ```
 
----
+### Combined module
 
-## 3. Antipatrones
-
-Evitar:
-
-- declarar todas las capabilities por defecto,
-- usar `keys` para reemplazar keybindings globales,
-- usar `decorate-items` para simular renderer custom,
-- depender de que una operación sin permiso falle silenciosamente,
-- mezclar muchas responsabilidades en un único módulo sin necesidad.
+```toml
+capabilities = ["providers", "commands", "input-accessory"]
+```
 
 ---
 
-## 4. Relación con otros documentos
+## 3. Anti-patterns
 
-- Arquitectura general: `MODULES_ARCHITECTURE.md`.
-- API pública: `MODULES_API_SPEC_V1.md`.
-- Actions: `CTX_ACTIONS_SPEC_V1.md`.
-- Operación/debug: `MODULES_OPERATIONS_GUIDE.md`.
+Avoid:
+
+- declaring all capabilities “just in case”,
+- depending on unauthorized operations failing silently,
+- mixing too many responsibilities into one module without need.
+
+---
+
+## 4. Related documents
+
+- Public API: `MODULES_API_SPEC_V1.md`.
+- Action semantics: `CTX_ACTIONS_SPEC_V1.md`.
+- Operations/debugging: `MODULES_OPERATIONS_GUIDE.md`.

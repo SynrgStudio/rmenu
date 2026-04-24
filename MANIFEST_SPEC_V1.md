@@ -1,37 +1,35 @@
-# MANIFEST SPEC V1 (`module.toml`)
+# MANIFEST SPEC V1
 
-Estado: Frozen v1  
-Fecha: 2026-04-24
-
----
-
-## 1. Objetivo
-
-Definir el formato declarativo mínimo para módulos en modo carpeta.
-
-El manifest declara identidad, versión, API, entrypoint y capabilities. El enforcement real siempre ocurre en el runtime del core.
+Status: Frozen v1  
+Date: 2026-04-24
 
 ---
 
-## 2. Ubicación
+## 1. Objective
 
-Ubicación por defecto:
+Define the minimum declarative format for modules distributed as directories.
+
+The manifest declares identity, version, API, entrypoint, and capabilities. Real enforcement always happens in the core runtime.
+
+---
+
+## 2. Location
+
+Default location:
 
 ```text
-modules/<module-folder>/module.toml
+modules/<module-name>/module.toml
 ```
 
-Convenciones:
+Rules:
 
-- un módulo por carpeta,
-- `module.toml` en la raíz de la carpeta,
-- entry JS relativo a esa carpeta,
-- assets/config/readme junto al manifest,
-- el nombre de carpeta no define identidad; la define `name`.
+- one module per directory,
+- `module.toml` at the directory root,
+- entrypoint path is relative to the manifest directory.
 
 ---
 
-## 3. Ejemplo mínimo
+## 3. Minimum example
 
 ```toml
 name = "hello-module"
@@ -46,92 +44,101 @@ priority = 0
 
 ---
 
-## 4. Campos obligatorios
+## 4. Fields
 
-- `name` — string no vacío, único entre módulos cargados.
-- `version` — string semver recomendado.
-- `api_version` — integer, debe ser soportado por el core.
-- `kind` — en v1 solo `script`.
-- `entry` — archivo JS de entrada, requerido para `kind = "script"`.
-
----
-
-## 5. Campos opcionales
-
-- `capabilities` — lista de permisos declarados, default `[]`.
-- `enabled` — bool, default `true`.
-- `priority` — int, default `0`.
-- `description` — string.
-- `author` — string.
-- `homepage` — URL string.
+- `name` — non-empty string, unique among loaded modules.
+- `version` — non-empty string.
+- `api_version` — numeric public module API version.
+- `kind` — module implementation kind. v1 supports `script`.
+- `entry` — path to the JS entry file, relative to the module directory.
+- `capabilities` — list of requested capabilities.
+- `enabled` — optional boolean, default `true`.
+- `priority` — optional integer for deterministic discovery/execution order.
+- `description` — optional human-readable text.
+- `author` — optional author metadata.
+- `homepage` — optional URL or project reference.
 
 ---
 
-## 6. Capabilities v1
+## 5. Capabilities
 
-Capabilities oficiales:
+Official v1 capabilities:
 
-- `providers`
-- `commands`
-- `decorate-items`
-- `input-accessory`
-- `keys`
+```toml
+capabilities = [
+  "providers",
+  "commands",
+  "decorate-items",
+  "input-accessory",
+  "keys"
+]
+```
 
-Reglas:
+Rules:
 
-- declarar solo lo necesario,
-- capabilities desconocidas pueden generar warning o rechazo según policy del loader,
-- una capability no otorga acceso directo a internals,
-- el runtime debe denegar operaciones no cubiertas por capabilities declaradas.
-
-Ver `MODULES_CAPABILITIES_MATRIX.md`.
-
----
-
-## 7. Validaciones mínimas
-
-El loader debe validar:
-
-1. `name` presente y no vacío.
-2. `version` presente y no vacío.
-3. `api_version` presente, numérico y soportado.
-4. `kind` presente y compatible con v1.
-5. `entry` presente para `kind = "script"`.
-6. Archivo `entry` existente y legible.
-7. `capabilities` parseables como lista.
-8. `enabled`, si existe, parseable como bool.
-9. `priority`, si existe, parseable como int.
+- modules should declare only capabilities they use,
+- unknown capabilities may warn or be rejected depending on loader policy,
+- lacking a capability causes sensitive operations to be denied at runtime.
 
 ---
 
-## 8. Hot reload v1
+## 6. Entrypoint
 
-Cuando cambia un módulo en modo carpeta:
+The entrypoint must export a default module factory:
 
-1. El core detecta cambio.
-2. Descarga el módulo afectado.
-3. Relee manifest y entry.
-4. Reinicia host si corresponde.
-5. Re-registra contribuciones.
-6. Si falla, el módulo queda degradado/deshabilitado y el error se registra.
-
-No hay migración compleja de estado en v1.
-
----
-
-## 9. Seguridad operativa
-
-- Manifest no da acceso directo a internals.
-- Manifest no ejecuta código por sí mismo.
-- Manifest declara intención/capabilities.
-- Runtime aplica enforcement.
-- Errores de manifest no deben tumbar el launcher.
+```js
+export default function createModule() {
+  return {
+    onLoad(ctx) {}
+  };
+}
+```
 
 ---
 
-## 10. Compatibilidad futura
+## 7. Minimum validation
 
-- `kind = "script"` es el único kind oficial v1.
-- Otros kinds como `theme` o `declarative` quedan reservados para futuras APIs.
-- Campos opcionales nuevos pueden agregarse si son ignorables por runtimes v1.
-- Cambios incompatibles requieren nueva versión de API o spec.
+The loader must validate at least:
+
+1. `name` present and non-empty.
+2. `version` present and non-empty.
+3. `api_version` present, numeric, and supported.
+4. `kind` supported.
+5. `entry` present and readable.
+6. `capabilities` present and parseable.
+7. module names are unique.
+8. path traversal is rejected for entry files.
+
+---
+
+## 8. Hot reload
+
+When a directory module changes:
+
+1. Runtime detects descriptor or entry change.
+2. Runtime unloads the affected module.
+3. Runtime reloads descriptor and entry.
+4. Runtime restarts the external host when needed.
+5. Runtime resets relevant counters on successful reload.
+6. On failure, the module becomes degraded/disabled and the error is recorded.
+
+No complex state migration exists in v1.
+
+---
+
+## 9. Security model
+
+- The manifest does not execute code by itself.
+- The manifest declares intent/capabilities.
+- Runtime enforces capabilities.
+- External host isolates module execution.
+- IPC payloads are validated by the core.
+
+---
+
+## 10. Compatibility
+
+- `api_version = 1` is required for v1 modules.
+- `kind = "script"` is the only official v1 kind.
+- Additive optional fields may be ignored by older loaders.
+- Incompatible changes require a new API version or spec.

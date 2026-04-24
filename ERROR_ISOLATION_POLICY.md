@@ -1,217 +1,192 @@
-# ERROR ISOLATION POLICY — Modules
+# ERROR ISOLATION POLICY
 
-Estado: Frozen v1  
-Fecha: 2026-04-24
-
----
-
-## 1. Objetivo
-
-Evitar que errores de un módulo comprometan la estabilidad del launcher.
-
-Principio:
-
-> Fail module, not launcher.
-
-El fallo de un módulo debe degradar funcionalidad opcional, no romper el core.
+Status: Frozen v1  
+Date: 2026-04-24
 
 ---
 
-## 2. Alcance
+## 1. Objective
 
-La política aplica a:
+Prevent module errors from compromising launcher stability.
 
-- load,
-- reload,
-- unload,
-- hooks,
-- providers,
-- decorators,
-- commands,
+Rule:
+
+> A module failure must degrade optional functionality, not break the core.
+
+---
+
+## 2. Scope
+
+This policy applies to:
+
+- external module host startup,
+- IPC requests/responses,
+- hook execution,
+- provider execution,
+- command dispatch,
+- decorations,
 - key hooks,
-- actions solicitadas por módulos,
-- IPC,
-- host externo.
+- actions requested by modules,
+- payload validation.
 
 ---
 
-## 3. Estados de módulo
+## 3. Module states
 
-Estados v1:
+States v1:
 
-- `loaded` — módulo operativo.
-- `degraded` — módulo con errores recientes, aún recuperable.
-- `disabled` — módulo desactivado por policy o configuración.
-- `unloaded` — descriptor presente sin host activo.
+- `loaded` — module is operational.
+- `degraded` — module has recent errors but can still recover.
+- `disabled` — module is disabled by policy or configuration.
+- `unloaded` — descriptor exists but no active host is running.
 
-Transiciones deben ser observables vía debug/log.
-
----
-
-## 4. Estrategia general
-
-Ante error:
-
-1. Capturar error en boundary de módulo.
-2. Registrar contexto:
-   - módulo,
-   - operación/hook,
-   - latencia,
-   - timeout si aplica,
-   - mensaje de error.
-3. Devolver estado seguro al core.
-4. Continuar pipeline sin ese resultado.
-5. Actualizar telemetría.
-6. Reiniciar/degradar/deshabilitar si policy lo requiere.
+Transitions must be observable through debug/log output.
 
 ---
 
-## 5. Timeouts
+## 4. General error handling
 
-Un timeout se trata como fallo recuperable al principio.
+On module error:
 
-Si hay timeouts consecutivos:
-
-- se incrementa contador del host,
-- se registra en telemetría,
-- puede reiniciarse el host,
-- al superar umbral, el módulo pasa a `disabled`.
-
-Timeouts no deben congelar la UI.
-
----
-
-## 6. Errores consecutivos
-
-Errores consecutivos pueden llevar a degradación/desactivación.
-
-Umbrales conceptuales v1:
-
-- `max_consecutive_errors_per_module`,
-- `max_consecutive_timeouts_per_module`.
-
-Cuando se supera un umbral:
-
-- el módulo pasa a `disabled`,
-- el host se detiene o deja de recibir requests,
-- el error queda visible en debug.
+1. Catch error at the module boundary.
+2. Record:
+   - module,
+   - operation/hook,
+   - latency,
+   - error kind,
+   - message.
+3. Do not panic the launcher.
+4. Continue global operation with remaining modules/results.
+5. Update telemetry.
+6. Apply restart/degrade/disable policy when thresholds are reached.
 
 ---
 
-## 7. Reinicio de host
+## 5. Hook errors
 
-Ante fallo recuperable:
+If a hook throws or returns invalid data:
 
-1. Core marca error.
-2. Core intenta reiniciar host si policy lo permite.
-3. Reinicios respetan `host_restart_backoff_ms`.
-4. Un reinicio exitoso limpia contadores relevantes.
-5. Reinicios recurrentes terminan en degradación o disable.
+- the hook result is discarded,
+- the error is recorded,
+- other modules continue,
+- the launcher keeps the previous safe state when possible.
 
----
-
-## 8. Load/reload fallido
-
-Si falla carga o reload:
-
-- el launcher continúa,
-- el módulo afectado queda `degraded` o `disabled`,
-- se registra error,
-- otros módulos no se descargan salvo que dependan explícitamente de esa operación global.
-
-Hot reload no debe entrar en loop continuo; debe tener debounce/backoff.
+Repeated errors may degrade or disable the module.
 
 ---
 
-## 9. Permission denied
+## 6. Timeout policy
 
-Si un módulo usa una operación sin capability:
+If a module host times out:
 
-- operación se rechaza,
-- se registra `permission_denied`,
-- no se aplica efecto parcial,
-- el launcher continúa.
+- the response is discarded,
+- timeout telemetry is incremented,
+- the host may be restarted,
+- after the threshold is exceeded, the module becomes `disabled`.
 
-Violaciones repetidas pueden considerarse error del módulo.
-
----
-
-## 10. Payload inválido
-
-Payload inválido debe tratarse como error de módulo/host, no del core.
-
-El core puede:
-
-- descartar item,
-- truncar campo,
-- normalizar campo,
-- rechazar response completa,
-- registrar error.
-
-Nunca debe crashear por payload inválido.
+Timeouts must not block the UI indefinitely.
 
 ---
 
-## 11. UX ante fallo
+## 7. Invalid payloads
 
-Por defecto:
+Invalid payloads are module/host errors, not core errors.
 
-- launcher sigue operativo,
-- no hay crash visible,
-- errores van a debug/stderr/log,
-- `--silent` suprime diagnósticos no críticos,
-- `--modules-debug` expone detalle operacional.
+Examples:
 
-Toasts de error son opcionales y deben ser no intrusivos.
+- missing required item fields,
+- oversized IPC payload,
+- invalid quick-select key,
+- malformed action,
+- invalid JSON/config.
+
+The core may discard, normalize, or reject the payload. It must never crash because of invalid payload.
 
 ---
 
-## 12. Recuperación
+## 8. Host restart and backoff
 
-Un módulo puede recuperarse mediante:
+When a host fails:
 
-- hot reload exitoso,
+1. Stop the broken host if still running.
+2. Wait for configured backoff.
+3. Restart if the module is not disabled.
+4. Reset consecutive error counters after successful reload when appropriate.
+5. Recurrent restarts end in degradation or disable.
+
+---
+
+## 9. Permission violations
+
+If a module uses an operation without the required capability:
+
+- the operation is rejected,
+- `permission_denied` is recorded,
+- the module remains isolated,
+- the launcher continues.
+
+Repeated violations may be treated as module errors.
+
+---
+
+## 10. Global operations
+
+A global runtime operation, such as module reload, must fail partially when possible:
+
+- the launcher continues,
+- the affected module becomes `degraded` or `disabled`,
+- unrelated modules remain loaded,
+- other modules are not unloaded unless they explicitly depend on that global operation.
+
+---
+
+## 11. Observability
+
+`--modules-debug` must expose at least:
+
+- builtin module count,
+- external descriptors,
+- running hosts,
+- loaded modules,
+- host state,
+- request count,
+- error count,
+- timeout count,
+- restart count,
+- average/max latency,
+- recent errors.
+
+`--silent` suppresses non-critical diagnostics but must not suppress internal telemetry.
+
+---
+
+## 12. Recovery
+
+A module can recover through:
+
 - `/modules.reload`,
-- corrección de manifest/script,
-- restart del launcher.
-
-Reload exitoso debe resetear contadores relevantes.
-
----
-
-## 13. Observabilidad mínima
-
-`--modules-debug` debe mostrar:
-
-- `api_version`,
-- cantidad de módulos builtin,
-- descriptors externos,
-- hosts activos,
-- módulos cargados,
-- estado por host,
-- requests,
-- errores,
-- timeouts,
-- restarts,
-- latencia promedio/máxima,
-- últimos errores.
+- file hot reload,
+- process restart,
+- manifest/script fix,
+- disabling and re-enabling the module.
 
 ---
 
-## 14. Casos mínimos de test
+## 13. Minimum test cases
 
-- Hook lanza error.
-- Provider timeout.
-- Provider devuelve payload inválido.
-- Command inválido.
-- Action denegada por permisos.
-- Reload fallido.
-- Host muere inesperadamente.
-- Payload IPC excede límite.
+Tests should cover:
 
-Cada caso debe verificar:
+- module throws in hook,
+- provider timeout,
+- provider returns invalid payload,
+- invalid command,
+- missing capability,
+- IPC payload exceeds limit,
+- host crashes or exits,
+- repeated failures trigger disable.
 
-- core sigue estable,
-- error registrado,
-- módulo entra al estado esperado,
-- otros módulos siguen funcionando.
+Expected result:
+
+- launcher remains operational,
+- module enters expected state,
+- other modules keep working.

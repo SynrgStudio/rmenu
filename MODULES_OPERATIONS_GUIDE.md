@@ -1,39 +1,39 @@
 # MODULES OPERATIONS GUIDE v1
 
-Estado: Frozen v1
+Status: Frozen v1
 
-Guía de operación, diagnóstico y recuperación del sistema modular de `rmenu`.
-
----
-
-## 1. Comandos runtime
-
-- `/modules.reload` — recarga módulos externos.
-- `/modules.list` — lista módulos cargados.
-- `/modules.telemetry.reset` — limpia telemetría de hosts.
+Operations, diagnostics, and recovery guide for the `rmenu` module system.
 
 ---
 
-## 2. Flags CLI
+## 1. Runtime commands
+
+- `/modules.reload` — reload external modules.
+- `/modules.list` — list loaded modules.
+- `/modules.telemetry.reset` — clear host telemetry.
+
+---
+
+## 2. CLI flags
 
 ```powershell
 rmenu.exe --modules-debug
 ```
 
-Imprime estado/telemetría de módulos y termina.
+Prints module status/telemetry and exits.
 
 ---
 
-## 3. Estados de host
+## 3. Host states
 
-- `loaded` — host operativo.
-- `degraded` — host con errores recientes.
-- `disabled` — host deshabilitado por policy o configuración.
-- `unloaded` — descriptor presente sin host activo.
+- `loaded` — host is operational.
+- `degraded` — host has recent errors but is still recoverable.
+- `disabled` — host is disabled by policy or configuration.
+- `unloaded` — descriptor exists with no active host.
 
 ---
 
-## 4. Instalar módulos
+## 4. Install modules
 
 ### `.rmod`
 
@@ -43,7 +43,7 @@ copy .\my-module.rmod .\modules\my-module.rmod
 rmenu.exe --modules-debug
 ```
 
-### Carpeta
+### Directory
 
 ```text
 modules/
@@ -52,19 +52,19 @@ modules/
     module.js
 ```
 
-Validar:
+Validate:
 
 ```powershell
 rmenu.exe --modules-debug
 ```
 
-Ver también `MODULES_QUICKSTART.md`.
+See also `MODULES_QUICKSTART.md`.
 
 ---
 
-## 5. Límites operativos
+## 5. Operational limits
 
-En `[Modules]` de `config.ini`:
+In `[Modules]` in `config.ini`:
 
 ```ini
 provider_total_budget_ms = 35
@@ -77,82 +77,145 @@ max_ipc_payload_bytes = 262144
 
 ### `dedupe_source_priority`
 
-Valores:
+Values:
 
 - `core_first`
 - `provider_first`
 
 ---
 
-## 6. Policy quick-select v1
+## 6. Quick-select policy v1
 
 ### `quick_select_mode = select`
 
-Tecla `1..0` mueve selección al item visible con `quickSelectKey`.
+Key `1..0` moves selection to the visible item with that `quickSelectKey`.
 
-No ejecuta submit automáticamente.
+It does not automatically submit.
 
 ### `quick_select_mode = submit`
 
-Tecla `1..0` selecciona y ejecuta submit inmediato del item visible.
+Key `1..0` selects and immediately submits the visible item.
 
-### Conflictos
+### Conflicts
 
-Si varios items usan la misma key:
+If multiple items use the same key:
 
-- primer item visible gana,
-- duplicados posteriores pierden key/badge,
-- se registra warning.
+- the first visible item wins,
+- later duplicates lose key/badge,
+- a warning is recorded.
 
 ---
 
-## 7. Policy de comandos
+## 7. Command policy
 
-Formato namespaced:
+Namespaced format:
 
 ```text
-/modulo::comando
+/module::command
 ```
 
-Reglas:
+Rules:
 
-- si un alias pertenece a un solo módulo, puede enrutarse de forma determinista,
-- si un alias pertenece a múltiples módulos, el alias sin namespace se rechaza,
-- en colisión, usar namespace explícito.
+- if an alias belongs to a single module, it can be routed deterministically;
+- if an alias belongs to multiple modules, the non-namespaced alias is rejected;
+- on collision, use the explicit namespace.
 
 ---
 
-## 8. Validación manual: calculator
+## 8. Manual validation: calculator
 
-El módulo `modules/calculator.rmod` valida el flujo completo de actions desde host externo hacia core.
+The `modules/calculator.rmod` module validates the full action flow from external host to core.
 
-Prueba manual:
+Manual test:
 
-1. Ejecutar `rmenu`.
-2. Escribir:
+1. Run `rmenu`.
+2. Type:
 
 ```text
 2+2
 ```
 
-Resultado esperado:
+Expected result:
 
-- la barra muestra `=4` alineado a la derecha;
-- el texto aparece con color de `InputAccessoryKind::Success`;
-- la lista inferior no muestra resultados fuzzy mientras el cálculo sea válido;
-- no se imprimen mensajes `permission_denied` por hooks no declarados.
+- the bar shows `=4` aligned to the right;
+- the text uses the `InputAccessoryKind::Success` color;
+- the lower list does not show fuzzy results while the calculation is valid;
+- no `permission_denied` messages appear for undeclared hooks.
 
-Si aparecen resultados fuzzy durante el cálculo, revisar que el módulo esté usando `ctx.replaceItems([])` y que el core respete `items_replaced_in_cycle`.
+If fuzzy results appear during calculation, check that the module uses `ctx.replaceItems([])` and that the core respects `items_replaced_in_cycle`.
 
-Si aparece `[success] =4`, revisar que `input_accessory_text()` renderice solo `accessory.text`.
+If `[success] =4` appears, check that `input_accessory_text()` renders only `accessory.text`.
 
 ---
 
-## 9. Errores comunes
+## 9. Manual validation: local-scripts v2
+
+The `modules/local-scripts.rmod` module validates the explicit local-intent pattern with `ctx.replaceItems(...)`.
+
+Manual test:
+
+1. Run `rmenu` from the project root.
+2. Type:
+
+```text
+>
+```
+
+Expected result:
+
+- the list shows configured local scripts;
+- the input accessory shows `local scripts: N`;
+- no History, Start Menu, or PATH results appear.
+
+3. Filter:
+
+```text
+> bu
+```
+
+Expected result:
+
+- `build` and `build-prod` appear;
+- items keep subtitle/path and extension badge.
+
+4. Exact match:
+
+```text
+> build
+```
+
+Expected result:
+
+- `build` is first;
+- `build` shows the `exact` badge;
+- `build-prod` appears below it.
+
+5. Global launcher:
+
+```text
+build
+```
+
+Expected result:
+
+- local-scripts mode is not entered;
+- normal global ranking is used.
+
+6. Submit:
+
+- select `build` inside `> build`;
+- press Enter;
+- the script should run through the `target` generated by the module.
+
+If fuzzy/global results appear inside `>`, check that the module calls `ctx.replaceItems(items)` and that the core applies external actions to the real `AppState`.
+
+---
+
+## 10. Common errors
 
 ### `RMOD_E_INVALID_MAGIC`
 
-El archivo `.rmod` no comienza con:
+The `.rmod` file does not start with:
 
 ```text
 #!rmod/v1
@@ -160,7 +223,7 @@ El archivo `.rmod` no comienza con:
 
 ### `RMOD_E_MISSING_MODULE_JS`
 
-Falta bloque:
+Missing block:
 
 ```text
 ---module.js---
@@ -168,9 +231,9 @@ Falta bloque:
 
 ### `permission_denied`
 
-El módulo no declaró la capability requerida.
+The module did not declare the required capability.
 
-Ejemplo:
+Example:
 
 ```text
 permission_denied module='x' operation='provide_items' capability='providers'
@@ -178,62 +241,62 @@ permission_denied module='x' operation='provide_items' capability='providers'
 
 ### `module-host timed out`
 
-El host no respondió dentro del timeout configurado.
+The host did not respond within the configured timeout.
 
 ### `module '<name>' disabled after repeated failures`
 
-El módulo superó umbral de errores/timeouts consecutivos.
+The module exceeded the consecutive error/timeout threshold.
 
 ---
 
-## 10. Flujo recomendado de diagnóstico
+## 11. Recommended diagnostic flow
 
-1. Ejecutar:
+1. Run:
 
 ```powershell
 rmenu.exe --modules-debug
 ```
 
-2. Revisar:
+2. Check:
 
-- estado del host,
+- host state,
 - `request_count`,
 - `error_count`,
 - `timeout_count`,
 - `restart_count`,
 - `recent_errors`.
 
-3. Corregir manifest/capabilities/script.
+3. Fix manifest/capabilities/script.
 
-4. Recargar:
+4. Reload:
 
 ```text
 /modules.reload
 ```
 
-5. Confirmar que el estado vuelve a `loaded`.
+5. Confirm the state returns to `loaded`.
 
 ---
 
-## 10. Recuperación
+## 12. Recovery
 
-Si un módulo queda roto:
+If a module is broken:
 
-1. Deshabilitarlo en manifest (`enabled = false`) o moverlo fuera de `modules/`.
-2. Ejecutar `/modules.reload` o reiniciar `rmenu`.
-3. Corregir errores.
-4. Rehabilitar.
-5. Validar con `--modules-debug`.
+1. Disable it in the manifest (`enabled = false`) or move it out of `modules/`.
+2. Run `/modules.reload` or restart `rmenu`.
+3. Fix errors.
+4. Re-enable it.
+5. Validate with `--modules-debug`.
 
 ---
 
-## 11. Señales de salud
+## 13. Health signals
 
-Un sistema saludable debería mostrar:
+A healthy system should show:
 
-- hosts en `loaded`,
-- pocos o cero errores recientes,
-- timeouts en cero,
-- restarts bajos,
-- latencias estables,
-- descriptors externos iguales a módulos esperados.
+- hosts in `loaded`,
+- few or zero recent errors,
+- zero timeouts,
+- low restart counts,
+- stable latencies,
+- external descriptors matching expected modules.

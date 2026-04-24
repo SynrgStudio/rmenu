@@ -1,505 +1,387 @@
 # MODULES ARCHITECTURE — rmenu
 
-Estado: Frozen v1  
-Fecha: 2026-04-24  
-Alcance: arquitectura pública del core modular de `rmenu`.
+Status: Frozen v1  
+Date: 2026-04-24  
+Scope: public architecture of the modular `rmenu` core.
 
 ---
 
-## 1. Propósito
+## 1. Purpose
 
-Este documento es la constitución del sistema modular de `rmenu`.
+This document is the constitution of the `rmenu` module system.
 
-Su objetivo es fijar:
+It defines:
 
-- qué pertenece al core,
-- qué debe vivir como módulo,
-- qué vocabulario público existe en v1,
-- qué límites no pueden cruzar los módulos,
-- y bajo qué condiciones se permite volver a tocar el core.
+- what belongs to the core,
+- what must live as a module,
+- which public vocabulary exists in v1,
+- which boundaries modules cannot cross,
+- and when touching the core again is allowed.
 
-Regla principal:
+Main rule:
 
-> Si una funcionalidad puede implementarse como módulo, no entra al core.
-
----
-
-## 2. Identidad del core
-
-`rmenu` es un launcher nativo para Windows y una superficie extensible de comandos.
-
-El core debe mantenerse:
-
-- pequeño,
-- rápido,
-- determinista,
-- local-first,
-- estable,
-- y autoritativo sobre UI, estado, ranking, ejecución y policy.
-
-El core no es un framework gráfico general ni un runtime de plugins sin límites. Es una base controlada para componer extensiones sin comprometer la experiencia principal del launcher.
+> If a feature can be implemented as a module, it does not belong in the core.
 
 ---
 
-## 3. Qué es el core
+## 2. Product boundary
 
-El core incluye únicamente las piezas necesarias para que `rmenu` funcione como launcher y como plataforma modular estable.
+`rmenu` is a native Windows launcher and an extensible command surface.
 
-### 3.1 Launcher base
+The core should remain:
 
-- UI Win32 base.
-- Input, selección y scroll.
-- Modo launcher.
-- Modo script/dmenu con `stdin` o `-e`.
-- Fuzzy search.
-- Ranking.
-- Sources internos básicos:
-  - History,
-  - Start Menu,
-  - PATH.
-- Cache de índice.
-- Launch backend vía Windows/ShellExecuteW y fallback controlado.
-- Configuración y CLI.
-- Métricas y diagnósticos base.
+- small,
+- fast,
+- predictable,
+- safe,
+- authoritative over UI, state, ranking, execution, and policy.
 
-### 3.2 Sistema modular
-
-- Descubrimiento de módulos.
-- Formato directorio con `module.toml`.
-- Formato single-file `.rmod`.
-- Normalización a descriptor interno común.
-- Runtime de módulos.
-- Module host externo.
-- Protocolo IPC.
-- Validación y sanitización de payloads.
-- Capabilities y enforcement.
-- Políticas de timeout, budget, dedupe, restart y disable.
-- Hot reload.
-- Telemetría y debug de módulos.
-
-### 3.3 Primitivas UI permitidas para módulos
-
-- `badge`.
-- `hint`.
-- `subtitle`/`source` cuando aplique.
-- `quickSelectKey`.
-- `InputAccessory`.
-
-El core renderiza todas las primitivas. Los módulos solo declaran intención.
+The core is not a general GUI framework or an unrestricted plugin runtime. It is a controlled base for composing extensions without compromising the primary launcher experience.
 
 ---
 
-## 4. Qué no es el core
+## 3. What the core is
 
-No pertenecen al core:
+The core includes only the pieces required for `rmenu` to work as a launcher and stable modular platform.
 
-- calculadoras,
-- conversores,
-- buscadores especializados,
-- comandos de productividad específicos,
-- integraciones con apps externas,
-- catálogos de scripts,
-- snippets,
-- workflows particulares,
-- automatizaciones específicas,
-- fuentes de datos opcionales,
-- temas avanzados,
-- widgets,
-- paneles,
-- renderers custom,
-- layouts específicos para un módulo.
+### 3.1 Launcher core
 
-Todo eso debe implementarse como módulo, salvo que varios módulos reales demuestren una necesidad general que no pueda expresarse con las primitivas v1.
+- Window creation and rendering.
+- Input, selection, and scroll.
+- Fuzzy matching and ranking.
+- Base sources: History, Start Menu, PATH, direct input.
+- Index cache.
+- Launch backend through Windows/ShellExecuteW and controlled fallback.
+- Configuration and CLI.
+- Base metrics and diagnostics.
+
+### 3.2 Module platform
+
+- Module discovery.
+- Directory format with `module.toml`.
+- Single-file `.rmod` format.
+- Normalization into a common internal descriptor.
+- Module runtime.
+- External module host.
+- IPC boundary.
+- Capability enforcement.
+- Payload validation and sanitization.
+- Timeout, budget, dedupe, restart, and disable policies.
+- Module telemetry and debug output.
+
+### 3.3 UI primitives allowed for modules
+
+- Items.
+- Badges.
+- Hints.
+- Subtitles/source labels.
+- Quick-select keys.
+- Input accessory.
+
+The core renders every primitive. Modules only declare intent.
 
 ---
 
-## 5. Frontera de responsabilidades
+## 4. What the core is not
+
+The core must not contain feature-specific behavior such as:
+
+- calculator logic,
+- productivity-specific commands,
+- note-taking workflows,
+- script catalogs,
+- clipboard managers,
+- automation for one local machine,
+- custom module-specific layouts,
+- domain-specific ranking hacks.
+
+Those belong in modules unless multiple real modules prove a general need that cannot be expressed with v1 primitives.
+
+---
+
+## 5. Responsibility boundaries
 
 ### 5.1 Core
 
-El core es responsable de:
+The core owns:
 
-- mantener invariantes de estado,
-- renderizar UI,
-- aplicar ranking y dedupe,
-- validar entradas de módulos,
-- aislar errores,
-- aplicar capabilities,
-- ejecutar policies,
-- lanzar targets,
-- coordinar hooks y providers,
-- exponer diagnósticos.
+- global state,
+- rendering,
+- ranking,
+- execution policy,
+- module loading,
+- capability enforcement,
+- module input validation,
+- dedupe,
+- timeouts and recovery,
+- diagnostics.
 
 ### 5.2 Module runtime
 
-El runtime de módulos es responsable de:
+The module runtime owns:
 
-- cargar descriptors,
-- iniciar hosts externos,
-- enrutar hooks,
-- recolectar respuestas,
-- aplicar budgets y timeouts,
-- registrar telemetría,
-- reiniciar o deshabilitar hosts defectuosos.
+- routing hooks,
+- applying action requests after validation,
+- isolating failures,
+- recording telemetry,
+- coordinating external hosts.
 
-### 5.3 Module host
+### 5.3 External module host
 
-El host externo es responsable de:
+The host owns:
 
-- ejecutar código de módulo fuera del proceso principal,
-- traducir requests IPC a hooks del módulo,
-- devolver resultados serializados,
-- no bloquear indefinidamente el core.
+- running module code outside the main process,
+- translating IPC requests to module hooks,
+- serializing responses,
+- failing independently from the launcher.
 
-### 5.4 Módulos de usuario
+### 5.4 User modules
 
-Un módulo es responsable de:
+A module owns:
 
-- declarar metadata y capabilities,
-- implementar hooks rápidos y deterministas,
-- aportar items o decoraciones mediante el contrato público,
-- manejar sus propios errores,
-- no depender de internals,
-- no asumir control del renderizado ni del event loop.
+- declaring metadata and capabilities,
+- implementing fast deterministic hooks,
+- providing items or decorations through the public contract,
+- handling its own domain logic,
+- treating errors as recoverable.
 
 ---
 
-## 6. Vocabulario oficial v1
+## 6. Public vocabulary v1
 
-El vocabulario v1 queda congelado en estas primitivas.
+### Providers
 
-### 6.1 Providers
+Providers contribute items for a query. They require `providers`. The core controls budget, timeout, merge, dedupe, and final ranking.
 
-Un provider aporta items externos al dataset visible.
+### Commands
 
-Uso típico:
+Commands are named invocable actions. They require `commands`. Recommended format: `/module::command`.
 
-- resultados calculados,
-- scripts locales,
-- comandos dinámicos,
-- búsquedas especializadas.
+### Decorations
 
-Reglas:
+Decorations enrich existing items with badges, hints, or similar declarative metadata. They require `decorate-items` and never control layout or drawing.
 
-- requiere capability `providers`,
-- está limitado por timeout y budget,
-- sus items son sanitizados,
-- sus resultados entran al merge/dedupe/ranking del core.
+### Input Accessory
 
-### 6.2 Commands
+Input accessory is a short contextual status rendered next to the input. It requires `input-accessory`; the core decides color and placement.
 
-Un command representa una acción invocable por nombre.
+### Capabilities
 
-Reglas:
+Capabilities are declarative permissions. A module declares what it uses; operations without permission are rejected with `permission_denied`.
 
-- requiere capability `commands`,
-- debe usar namespacing cuando haya colisión,
-- formato recomendado: `/modulo::comando`,
-- el core resuelve rutas y rechaza aliases ambiguos.
+### Key Hooks
 
-### 6.3 Decorations
+Key hooks receive controlled key events. They require `keys` and do not replace the core keybinding system.
 
-Decorations enriquecen items existentes sin reemplazar el renderer.
+### Runtime Actions
 
-Campos v1:
-
-- `badge`,
-- `hint`,
-- `quickSelectKey`,
-- `subtitle`,
-- `source`.
-
-Reglas:
-
-- requiere capability `decorate-items`,
-- el core puede truncar, ignorar o normalizar campos,
-- la decoración nunca otorga control sobre layout o dibujo.
-
-### 6.4 Input Accessory
-
-Un input accessory muestra estado contextual asociado al input.
-
-Campos v1:
-
-- `text`,
-- `kind`: `info | success | warning | error | hint`,
-- `priority`.
-
-Reglas:
-
-- requiere capability `input-accessory`,
-- solo hay un accessory visible a la vez,
-- mayor prioridad gana,
-- render y layout son responsabilidad del core.
-
-### 6.5 Capabilities
-
-Capabilities son permisos declarativos.
-
-Capabilities v1:
-
-- `providers`,
-- `commands`,
-- `decorate-items`,
-- `input-accessory`,
-- `keys`.
-
-Reglas:
-
-- un módulo debe declarar solo lo que usa,
-- el manifest declara intención,
-- el runtime aplica enforcement,
-- una operación sin permiso se rechaza con `permission_denied`.
-
-### 6.6 Key Hooks
-
-Key hooks permiten reaccionar a teclas controladas.
-
-Reglas:
-
-- requiere capability `keys`,
-- no permite interceptar el event loop completo,
-- no permite redefinir keybindings globales del core,
-- errores o timeouts se aíslan por módulo.
-
-### 6.7 Runtime Actions
-
-Runtime actions son mutaciones controladas solicitadas por módulos.
-
-Familias v1:
-
-- query/selection: `setQuery`, `setSelection`, `moveSelection`,
-- flujo: `submit`, `close`,
-- contenido: `addItems`, `replaceItems`,
-- registro: `registerCommand`, `registerProvider`,
-- UI primitive: `setInputAccessory`, `clearInputAccessory`.
-
-Reglas:
-
-- toda action se valida antes de modificar estado,
-- el core puede rechazar actions por estado inválido o permiso insuficiente,
-- no existe mutación directa del estado interno.
+Runtime actions are controlled state-change requests from modules, such as `replaceItems`, `setInputAccessory`, or `registerCommand`. The core may reject actions for invalid state or missing permission.
 
 ---
 
-## 7. Límites explícitos para módulos
+## 7. Explicit module limits
 
-Un módulo no puede:
+A module cannot:
 
-- dibujar UI directamente,
-- acceder a Win32/GDI,
-- modificar el layout global,
-- reemplazar el ranking engine,
-- mutar estado arbitrariamente,
-- saltarse capabilities,
-- interceptar el event loop del core,
-- acceder a estructuras internas,
-- depender del orden físico de memoria o internals Rust,
-- romper la operación del launcher si falla,
-- bloquear la UI con I/O lento,
-- definir primitivas visuales nuevas por su cuenta.
+- draw UI directly,
+- access Win32/GDI,
+- replace global layout,
+- replace the ranking engine,
+- mutate arbitrary core state,
+- bypass capabilities,
+- depend on Rust internals or memory layout,
+- break launcher operation when it fails,
+- assume undocumented execution order.
 
-Un módulo solo puede operar mediante:
+A module can only operate through:
 
-- manifest/metadata,
-- capabilities,
-- hooks oficiales,
-- providers,
-- commands,
-- items normalizados,
-- decorations,
-- input accessory,
-- runtime actions permitidas.
+- declared capabilities,
+- public hooks,
+- `ctx`,
+- validated runtime actions,
+- public item/accessory/command/provider contracts.
 
 ---
 
-## 8. Contratos públicos v1
+## 8. Public contracts v1
 
-Los contratos públicos v1 están definidos en:
+The public v1 contracts are defined in:
 
-- `MODULES_API_SPEC_V1.md` — hooks, ctx, items y restricciones.
-- `RMOD_SPEC_V1.md` — formato `.rmod` single-file.
-- `MANIFEST_SPEC_V1.md` — formato `module.toml`.
-- `CTX_ACTIONS_SPEC_V1.md` — fachada `ctx` y mutaciones permitidas.
-- `MODULES_CAPABILITIES_MATRIX.md` — capabilities y enforcement.
-- `PROVIDER_EXECUTION_POLICY.md` — budget, timeout, merge y dedupe.
-- `ERROR_ISOLATION_POLICY.md` — fallos, estados y recuperación.
-- `MODULES_AUTHORING_GUIDE.md` — guía para autores.
-- `MODULES_OPERATIONS_GUIDE.md` — operación y debugging.
-- `MODULES_QUICKSTART.md` — instalación, desarrollo y diagnóstico rápido.
-- `DECISIONS.md` — decisiones arquitectónicas aceptadas.
+- `MODULES_API_SPEC_V1.md`
+- `RMOD_SPEC_V1.md`
+- `MANIFEST_SPEC_V1.md`
+- `CTX_ACTIONS_SPEC_V1.md`
+- `PROVIDER_EXECUTION_POLICY.md`
+- `ERROR_ISOLATION_POLICY.md`
+- `MODULES_CAPABILITIES_MATRIX.md`
+- `MODULES_AUTHORING_GUIDE.md`
+- `MODULES_OPERATIONS_GUIDE.md`
+- `MODULES_QUICKSTART.md`
+- `DECISIONS.md`
 
-Estos documentos forman el contrato conceptual v1. Si hay conflicto entre ellos, este documento define la intención arquitectónica y las specs específicas definen el detalle operativo.
-
----
-
-## 9. Política de estabilidad API v1
-
-La API v1 debe mantenerse estable.
-
-Permitido sin bump de API:
-
-- aclarar documentación,
-- corregir bugs,
-- endurecer validaciones sin romper casos válidos,
-- agregar campos opcionales ignorables,
-- mejorar telemetría,
-- mejorar performance,
-- mejorar mensajes de error,
-- ampliar tests.
-
-No permitido sin bump de API:
-
-- cambiar significado de hooks existentes,
-- remover campos públicos,
-- cambiar nombres de capabilities,
-- cambiar formato obligatorio de `.rmod`,
-- cambiar semántica de command routing,
-- permitir a módulos saltarse policies del core,
-- exponer internals como API pública.
+These documents form the v1 conceptual contract. If they conflict, this architecture states intent and the specific specs define operational details.
 
 ---
 
-## 10. Core Change Policy
+## 9. API stability policy v1
 
-Después del freeze v1, el core solo acepta cambios por una de estas causas:
+Allowed v1 changes:
 
-1. Bug crítico.
-2. Crash.
-3. Seguridad o aislamiento.
-4. Performance medible.
-5. Compatibilidad Windows.
-6. Corrección del contrato v1.
-7. Necesidad general demostrada por varios módulos reales.
+- clarify documentation,
+- fix bugs,
+- harden validation without breaking valid modules,
+- improve diagnostics,
+- add optional ignorable fields,
+- improve performance.
 
-No son razones suficientes:
+Breaking changes include:
 
-- “sería cómodo”,
-- “este módulo lo necesita”,
-- “queda más lindo en el core”,
-- “es más rápido hardcodearlo”,
-- “quizá algún día haga falta”.
+- removing public fields,
+- changing command routing semantics,
+- letting modules bypass core policies,
+- exposing internals as public API,
+- changing meaning of existing capabilities.
 
-Antes de tocar core, responder:
-
-1. ¿Puede implementarse como módulo?
-2. ¿Puede resolverse con una primitiva existente?
-3. ¿Es una necesidad general o un caso específico?
-4. ¿Hay al menos dos o tres módulos reales afectados?
-5. ¿La solución amplía el lenguaje público o solo agrega ergonomía?
-6. ¿Se puede resolver con documentación o template?
-
-Si la respuesta no justifica core, debe ser módulo.
+Breaking changes require a new API version or explicit documented decision.
 
 ---
 
-## 11. Criterios para aceptar una nueva primitiva
+## 10. Core change policy
 
-Una nueva primitiva solo puede agregarse si cumple todo:
+After v1 freeze, the core accepts changes only for:
 
-- no puede expresarse con providers, commands, decorations, input accessory, capabilities, key hooks o runtime actions,
-- desbloquea múltiples módulos reales,
-- tiene semántica pequeña y estable,
-- no expone internals,
-- no permite renderizado arbitrario,
-- tiene policy de error/timeout si ejecuta lógica,
-- tiene spec pública,
-- tiene tests,
-- tiene guía de authoring,
-- tiene path de compatibilidad o bump de API.
+1. critical bug,
+2. crash,
+3. security/isolation,
+4. performance,
+5. Windows compatibility,
+6. v1 contract correction,
+7. general need demonstrated by several real modules.
 
----
+Rejected reasons:
 
-## 12. Rechazo de features hacia módulos
+- “it would be convenient”,
+- “this one module needs it”,
+- “it looks nicer in core”,
+- “hardcoding it is faster”,
+- “maybe it will be useful someday”.
 
-Una feature debe mandarse a módulo si:
+Before adding anything to core, ask:
 
-- depende de un workflow específico,
-- integra una herramienta externa concreta,
-- agrega una fuente opcional de datos,
-- agrega un comando especializado,
-- agrega una transformación de texto específica,
-- agrega automatización local,
-- solo beneficia a un perfil de usuario,
-- se puede expresar como provider/command/decorator.
+1. Can it be a module?
+2. Is it a primitive or a feature?
+3. Is it general or specific?
+4. Are two or three real modules affected?
+5. Does it expand the public language or just improve ergonomics?
+6. Can documentation or templates solve it?
 
----
-
-## 13. Breaking changes y API v2
-
-Una API v2 solo se propone cuando v1 impide una capacidad general real.
-
-Proceso mínimo:
-
-1. Documentar fricción con ejemplos de módulos reales.
-2. Probar alternativas usando primitivas v1.
-3. Escribir decisión en `DECISIONS.md` o documento equivalente.
-4. Definir spec v2.
-5. Definir compatibilidad o migración.
-6. Mantener v1 mientras sea razonable, salvo decisión explícita.
+If the answers do not justify core work, it must remain a module.
 
 ---
 
-## 14. Deprecación
+## 11. Accepting a new primitive
 
-Una API pública no se elimina silenciosamente.
+A new primitive is accepted only if it:
 
-Proceso:
-
-1. Marcar como deprecated en spec.
-2. Explicar reemplazo.
-3. Mantener compatibilidad por una ventana razonable.
-4. Documentar remoción en changelog/decisión.
-5. Remover solo con bump de API si rompe módulos existentes.
-
----
-
-## 15. Política documental
-
-Ubicación oficial de documentación pública v1: root del repo.
-
-Documentos históricos, reportes, snapshots y razonamiento exploratorio deben vivir en:
-
-- `extras/private-docs/`, o
-- `docs/audits/` para auditorías fechadas.
-
-El root debe reservarse para:
-
-- README,
-- specs oficiales,
-- guías oficiales,
-- checklist de cierre,
-- políticas públicas del sistema.
+- unlocks multiple real modules,
+- has small stable semantics,
+- keeps the core authoritative,
+- has capability enforcement,
+- has error/timeout policy if it runs logic,
+- has a public spec,
+- has tests,
+- has authoring guidance,
+- does not expose internals.
 
 ---
 
-## 16. Definition of Done del core v1
+## 12. Sending features to modules
 
-El core se considera cerrado cuando:
+A feature should be sent to a module if it:
 
-- esta arquitectura está documentada,
-- el vocabulario v1 está congelado,
-- las specs públicas no se contradicen,
-- el loader `.rmod` y directorio están estables,
-- el runtime externo aísla errores,
-- capabilities se enforcean,
-- providers/commands/decorations/input accessory funcionan dentro de policy,
-- hay módulos reales que validan la API sin tocar core,
-- tests y verificaciones principales pasan,
-- y la política de cambios futuros está aceptada.
+- depends on a specific workflow,
+- adds a specialized command,
+- adds a specific text transformation,
+- adds local automation,
+- introduces domain-specific logic,
+- can be expressed with existing primitives.
 
 ---
 
-## 17. Declaración final
+## 13. API v2 process
 
-El core no debe crecer por acumulación de features.
+Minimum process:
 
-El core debe proteger:
+1. Document friction with examples from real modules.
+2. Show why v1 primitives are insufficient.
+3. Write a decision in `DECISIONS.md` or an equivalent document.
+4. Define the new contract.
+5. Define compatibility or migration.
+6. Keep v1 as long as reasonable unless an explicit decision says otherwise.
 
-- estabilidad,
-- velocidad,
-- coherencia,
-- contrato público,
-- y seguridad operacional.
+---
 
-La expansión funcional de `rmenu` debe ocurrir primero mediante módulos.
+## 14. Deprecation
+
+A public API is never removed silently.
+
+Process:
+
+1. Document deprecated API.
+2. Provide replacement.
+3. Warn through debug/diagnostics when possible.
+4. Document removal in changelog/decision.
+5. Remove only with API bump if existing modules break.
+
+---
+
+## 15. Documentation policy
+
+Official public v1 documentation lives at the repository root.
+
+Historical reports, snapshots, and exploratory reasoning should live under:
+
+```text
+docs/historico/
+docs/audits/
+```
+
+The root should contain only:
+
+- current specs,
+- official guides,
+- accepted decisions,
+- public system policies.
+
+---
+
+## 16. Core closure criteria
+
+The core can be considered closed when:
+
+- this architecture is documented,
+- v1 vocabulary is frozen,
+- public specs do not contradict each other,
+- `.rmod` and directory loaders are stable,
+- the external runtime isolates errors,
+- capabilities are enforced,
+- real modules validate the API without core-specific behavior,
+- tests and checks pass,
+- future core-change policy is accepted.
+
+---
+
+## 17. Final declaration
+
+The core must not grow by feature accumulation.
+
+The core exists to provide:
+
+- stable primitives,
+- safe execution,
+- deterministic UI,
+- public contract,
+- diagnostics,
+- performance.
+
+Functional expansion of `rmenu` must happen through modules first.

@@ -1,34 +1,33 @@
-# CTX & ACTIONS SPEC V1
+# CTX ACTIONS SPEC V1
 
-Estado: Frozen v1  
-Fecha: 2026-04-24
-
----
-
-## 1. Objetivo
-
-Definir el comportamiento de `ctx` y de las actions permitidas para módulos.
-
-`ctx` es una fachada controlada:
-
-- lectura segura,
-- utilidades de diagnóstico,
-- mutaciones solo mediante actions validadas,
-- sin referencias directas a estado interno mutable.
+Status: Frozen v1  
+Date: 2026-04-24
 
 ---
 
-## 2. Principios
+## 1. Objective
 
-1. El core mantiene autoridad sobre estado.
-2. Un módulo solicita cambios; no muta internals.
-3. Toda action puede ser aceptada, normalizada o rechazada.
-4. Errores de action no deben tumbar el launcher.
-5. El resultado debe ser determinista para el mismo estado de entrada.
+Define the behavior of `ctx` and the actions modules are allowed to request.
+
+`ctx` is a controlled facade. It provides:
+
+- read-only state snapshots,
+- diagnostic utilities,
+- action requests validated by the core.
 
 ---
 
-## 3. Lecturas
+## 2. Core rules
+
+1. A module never mutates internal core state directly.
+2. A module requests changes through actions.
+3. The core validates state, payload, and capabilities.
+4. The core may reject an action.
+5. Rejected actions must not break the launcher.
+
+---
+
+## 3. Read methods
 
 ```ts
 ctx.query() -> string
@@ -39,32 +38,30 @@ ctx.mode() -> "launcher" | "stdin" | "command"
 ctx.hasCapability(name: string) -> boolean
 ```
 
-### Reglas
+Rules:
 
-- Las lecturas son snapshot coherente del ciclo actual.
-- El snapshot puede quedar obsoleto luego de aplicar actions.
-- No se exponen punteros mutables a estructuras internas.
-- `ctx.items()` puede estar normalizado/truncado respecto a fuentes originales.
+- values are snapshots,
+- returned values are not mutable references to core internals,
+- snapshots may be stale by the next event tick.
 
 ---
 
-## 4. Utilidades
+## 4. Utilities
 
 ```ts
-ctx.log(message: string)
-ctx.toast(message: string)
+ctx.log(message)
+ctx.toast(message)
 ```
 
-### Reglas
+Rules:
 
-- `log` se integra a observabilidad del módulo.
-- `toast` puede ser rate-limited, ignorado o degradado por el core.
-- Mensajes excesivamente largos pueden truncarse.
-- Ninguna utilidad debe bloquear UI.
+- `log` integrates with module observability.
+- `toast` is a request for user feedback; the core may ignore or coalesce it.
+- Utilities must not expose UI internals.
 
 ---
 
-## 5. Actions de query y selección
+## 5. Query and selection actions
 
 ```ts
 ctx.setQuery(text)
@@ -72,148 +69,122 @@ ctx.setSelection(index)
 ctx.moveSelection(offset)
 ```
 
-### Validaciones
+Rules:
 
-- `text` puede ser truncado o normalizado por policy futura.
-- `setSelection(index)` puede fallar si el índice está fuera de rango.
-- `moveSelection(offset)` debe clamplear al rango visible válido.
-- Cambios de selección no deben romper invariantes de scroll.
+- `setQuery` requests replacement of current input.
+- `setSelection(index)` may fail when the index is out of range.
+- `moveSelection(offset)` clamps to the valid visible range.
+- Selection changes must preserve scroll invariants.
 
 ---
 
-## 6. Actions de flujo
+## 6. Submit and close
 
 ```ts
 ctx.submit()
 ctx.close()
 ```
 
-### Reglas
+Rules:
 
-- `submit()` solicita ejecutar el item seleccionado actual.
-- `close()` solicita cerrar la UI actual.
-- El core puede ignorar la solicitud si el estado no permite la operación.
-- Estas actions no otorgan control directo sobre el proceso del launcher.
+- `submit` requests normal submit behavior for the current state.
+- `close` requests launcher close.
+- The core may ignore the request if the state does not allow the operation.
 
 ---
 
-## 7. Actions de contenido
+## 7. Item actions
 
 ```ts
 ctx.addItems(items)
 ctx.replaceItems(items)
 ```
 
-### Reglas
+Rules:
 
-- Items se validan con el mismo modelo que providers.
-- Items inválidos pueden descartarse.
-- `addItems` agrega al dataset controlado por el ciclo actual.
-- `replaceItems` es restrictivo y puede estar limitado por contexto/policy.
-- El core conserva autoridad sobre merge, dedupe y ranking final.
+- items are validated and sanitized before use.
+- invalid items may be discarded.
+- `addItems` appends to the module-visible item list.
+- `replaceItems` replaces the visible item list for the current cycle.
+- `replaceItems` can be used by scoped intent modules to avoid global fuzzy competition.
 
 ---
 
-## 8. Registro dinámico
+## 8. Dynamic registration
 
 ```ts
-ctx.registerProvider(def)
 ctx.registerCommand(def)
+ctx.registerProvider(def)
 ```
 
-### Capabilities requeridas
+Rules:
 
-- `registerProvider` requiere `providers`.
-- `registerCommand` requiere `commands`.
-
-### Reglas
-
-- Registros se asocian a la identidad del módulo.
-- Colisiones de comandos se resuelven por namespacing.
-- Registros inválidos se rechazan y registran.
+- `registerCommand` requires `commands`.
+- `registerProvider` requires `providers`.
+- registrations are associated with module identity.
+- command collisions are resolved by namespacing.
+- invalid registrations are rejected and recorded.
 
 ---
 
-## 9. UI primitive
+## 9. Input accessory
 
 ```ts
 ctx.setInputAccessory(accessory)
 ctx.clearInputAccessory()
 ```
 
-### Capability requerida
+Rules:
 
-- `input-accessory`
-
-### Reglas
-
-- Solo un accessory visible a la vez.
-- Mayor prioridad gana.
-- `clearInputAccessory` elimina el accessory activo cuando corresponde.
-- El core decide render, color, truncado y layout.
+- requires `input-accessory`.
+- only one input accessory is visible at a time.
+- higher priority wins.
+- the core decides rendering, color, truncation, and layout.
 
 ---
 
-## 10. Errores de actions
+## 10. Errors
 
-Cada action debe terminar en uno de estos resultados conceptuales:
+If an action fails validation:
 
-```ts
-type ActionResult =
-  | { ok: true }
-  | { ok: false, error: ActionError }
-```
-
-Errores conceptuales:
-
-- `invalid_state`
-- `permission_denied`
-- `invalid_payload`
-- `invalid_selection`
-- `timeout`
-- `internal_error`
-
-Reglas:
-
-- El core debe loggear error con identidad del módulo.
-- El módulo defectuoso no debe romper el runtime global.
-- Errores repetidos pueden contribuir a degradación/desactivación.
+- the action is ignored,
+- the error is recorded with module identity,
+- the faulty module must not break the global runtime,
+- repeated errors may contribute to degradation/disable.
 
 ---
 
-## 11. Permission model
+## 11. Capability enforcement
 
-Cada operación sensible requiere capability declarada.
+Each sensitive operation requires its declared capability.
 
-| Operación | Capability |
+| Operation | Capability |
 |---|---|
-| `provideItems` / `registerProvider` | `providers` |
-| `onCommand` / `registerCommand` | `commands` |
-| `decorateItems` | `decorate-items` |
-| `setInputAccessory` / `clearInputAccessory` | `input-accessory` |
-| `onKey` | `keys` |
+| `registerProvider` | `providers` |
+| `registerCommand` | `commands` |
+| `setInputAccessory`, `clearInputAccessory` | `input-accessory` |
+| `onKey` routing | `keys` |
+| `decorateItems` routing | `decorate-items` |
 
-Sin capability:
+If missing:
 
-- la operación se deniega,
-- se registra `permission_denied`,
-- el launcher continúa.
-
----
-
-## 12. Determinismo y orden
-
-- Actions se aplican en orden determinista por ciclo.
-- Reentrancia no controlada debe bloquearse.
-- Efectos secundarios ocultos entre módulos deben evitarse.
-- Providers y decorators no deben depender de orden no documentado.
-- Cuando exista prioridad, se ordena por prioridad y luego nombre estable.
+- the operation is denied,
+- `permission_denied` is recorded,
+- the launcher continues.
 
 ---
 
-## 13. Relación con specs
+## 12. Determinism
 
-- Modelo de hooks e items: `MODULES_API_SPEC_V1.md`.
-- Capabilities: `MODULES_CAPABILITIES_MATRIX.md`.
-- Error isolation: `ERROR_ISOLATION_POLICY.md`.
-- Arquitectura general: `MODULES_ARCHITECTURE.md`.
+- Action application order must be stable.
+- Hidden side effects between modules should be avoided.
+- The core remains the authority over final UI state.
+
+---
+
+## 13. Related specs
+
+- `MODULES_API_SPEC_V1.md`
+- `MODULES_CAPABILITIES_MATRIX.md`
+- `PROVIDER_EXECUTION_POLICY.md`
+- `ERROR_ISOLATION_POLICY.md`

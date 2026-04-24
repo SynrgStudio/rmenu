@@ -1,180 +1,144 @@
-# rmenu - Ejemplos de Scripts con PowerShell
+# rmenu - PowerShell scripting examples
 
-## Introducción
+## Introduction
 
-`rmenu` está diseñado para ser una herramienta versátil que se puede integrar fácilmente en scripts de PowerShell. Al capturar la salida estándar (`stdout`) de `rmenu` y verificar su código de salida, los scripts pueden obtener selecciones del usuario de forma interactiva.
+`rmenu` is designed to be a versatile tool that integrates easily into PowerShell scripts. By capturing `rmenu` standard output (`stdout`) and checking its exit code, scripts can obtain interactive user selections.
 
-## Conceptos Clave para Scripts de PowerShell
+## Basic usage
 
-1.  **Llamar a `rmenu.exe`:**
-    Simplemente ejecuta `rmenu.exe` como cualquier otro comando. Asegúrate de que `rmenu.exe` esté en tu PATH o proporciona la ruta completa al ejecutable.
+1. **Run `rmenu.exe`**
 
-2.  **Capturar la Salida (`stdout`):
-    La selección del usuario se envía a `stdout`. Puedes capturarla en una variable de PowerShell.
-    ```powershell
-    $seleccion = rmenu.exe -e "Opcion1,Opcion2"
-    ```
+   Run `rmenu.exe` like any other command. Ensure it is in your PATH or provide the full executable path.
 
-3.  **Verificar el Código de Salida (`$LASTEXITCODE`):
-    Inmediatamente después de que `rmenu.exe` termine, la variable automática `$LASTEXITCODE` contendrá:
-    *   `0`: Si el usuario seleccionó un ítem presionando `Enter`.
-    *   `1`: Si el usuario canceló la selección presionando `Escape` (o si la ventana se cerró por otros medios sin una selección explícita).
-    ```powershell
-    if ($LASTEXITCODE -eq 0) {
-        # El usuario seleccionó algo
-        Write-Host "Seleccionado: $seleccion"
-    } else {
-        # El usuario canceló
-        Write-Host "Selección cancelada"
-    }
-    ```
+2. **Capture output**
 
-4.  **Pasar Opciones a `rmenu`:**
-    *   **Desde una lista de strings (para `-e`):
-        ```powershell
-        $misOpciones = "Rojo","Verde","Azul"
-        $opcionesParaRmenu = $misOpciones -join ',' # Une con comas
-        $seleccion = rmenu.exe -p "Color:" -e $opcionesParaRmenu
-        ```
-        O directamente si el string ya está formateado:
-        ```powershell
-        $opcionesString = "Alfa,Beta,Gamma"
-        $seleccion = rmenu.exe -e $opcionesString
-        ```
+   The user's selection is written to `stdout`. You can capture it in a PowerShell variable.
 
-    *   **Desde `stdin` (un ítem por línea):
-        ```powershell
-        $misOpciones = "Uno`nDos`nTres"
-        $seleccion = echo $misOpciones | rmenu.exe -p "Número:"
-        ```
-        O si cada opción es un elemento de un array:
-        ```powershell
-        $arrayOpciones = @("Laptop", "Desktop", "Tablet")
-        $seleccion = $arrayOpciones | rmenu.exe -p "Dispositivo:"
-        ```
+   ```powershell
+   $selection = rmenu.exe -p "Select:"
+   ```
 
-## Ejemplos Prácticos
+3. **Check the exit code (`$LASTEXITCODE`)**
 
-### 1. Selector de Navegador Web
-Un script simple para elegir un navegador y lanzarlo.
+   Immediately after `rmenu.exe` exits, `$LASTEXITCODE` contains:
+
+   - `0`: the user selected an item with Enter.
+   - `1`: the user cancelled with Escape, or the window closed without an explicit selection.
+
+   ```powershell
+   if ($LASTEXITCODE -eq 0) {
+       Write-Host "Selected: $selection"
+   } else {
+       Write-Host "Selection cancelled"
+   }
+   ```
+
+4. **Provide items**
+
+   From a comma-separated string:
+
+   ```powershell
+   $selection = rmenu.exe -p "Choose:" -e "Option A,Option B,Option C"
+   ```
+
+   Or from standard input, one item per line:
+
+   ```powershell
+   $options = @("One", "Two", "Three")
+   $selection = $options | rmenu.exe -p "Number:"
+   ```
+
+---
+
+## Practical examples
+
+### 1. Launch a selected command
 
 ```powershell
-$opciones = "Firefox,Chrome,Edge,Brave"
-$seleccion = rmenu.exe -p "Elige navegador:" -e $opciones
+$commands = @("notepad.exe", "calc.exe", "mspaint.exe")
+$selection = $commands | rmenu.exe -p "Run:"
 
-if ($LASTEXITCODE -eq 0 -and $seleccion) {
-    Write-Host "Has seleccionado: $seleccion"
+if ($LASTEXITCODE -eq 0 -and $selection) {
     try {
-        switch ($seleccion) {
-            "Firefox" { Start-Process firefox -ErrorAction Stop }
-            "Chrome"  { Start-Process chrome -ErrorAction Stop }
-            "Edge"    { Start-Process msedge -ErrorAction Stop }
-            "Brave"   { Start-Process brave -ErrorAction Stop }
-            default   { Write-Warning "Navegador no reconocido para lanzar." }
-        }
+        Start-Process $selection
     } catch {
-        Write-Error "No se pudo lanzar '$seleccion'. Asegúrate de que está instalado y en el PATH."
+        Write-Error "Could not launch '$selection'. Ensure it is installed and in PATH."
     }
 } else {
-    Write-Host "Selección cancelada."
+    Write-Host "Selection cancelled."
 }
 ```
 
-### 2. Lanzador de Aplicaciones (desde una lista fija)
-Permite al usuario seleccionar una aplicación común para lanzarla.
+### 2. Application launcher map
+
+Lets the user select a friendly name and launches the mapped executable.
 
 ```powershell
 $apps = @{
-    "Calculadora" = "calc.exe"
-    "Bloc de notas" = "notepad.exe"
-    "Explorador de archivos" = "explorer.exe"
-    "Símbolo del sistema (CMD)" = "cmd.exe"
-    "PowerShell" = "powershell.exe"
+    "Notepad" = "notepad.exe"
+    "Calculator" = "calc.exe"
     "Paint" = "mspaint.exe"
+    "Command Prompt (CMD)" = "cmd.exe"
 }
 
-# Convertir las claves del Hashtable (nombres de app) a un string delimitado por comas para rmenu
-$nombresAppsParaRmenu = ($apps.Keys | ForEach-Object { $_ }) -join ','
+$appNames = $apps.Keys | Sort-Object
+$selectedName = $appNames | rmenu.exe -p "Launch app:"
 
-$seleccionNombre = rmenu.exe -p "Lanzar aplicación:" -e $nombresAppsParaRmenu
-
-if ($LASTEXITCODE -eq 0 -and $seleccionNombre) {
-    $ejecutable = $apps[$seleccionNombre]
-    if ($ejecutable) {
-        Write-Host "Lanzando: $seleccionNombre ($ejecutable)"
-        Start-Process $ejecutable
+if ($LASTEXITCODE -eq 0 -and $selectedName) {
+    $target = $apps[$selectedName]
+    if ($target) {
+        Start-Process $target
     } else {
-        # Esto no debería ocurrir si $seleccionNombre viene de las claves de $apps
-        Write-Error "Error interno: Aplicación '$seleccionNombre' no encontrada en la lista del script."
+        Write-Error "Internal error: app '$selectedName' was not found in the script map."
     }
-} else {
-    Write-Host "Lanzamiento cancelado."
 }
 ```
 
-### 3. Selector de Archivos en Directorio Actual (Nombres)
-Muestra los nombres de los archivos en el directorio actual para selección.
+### 3. File selector
+
+Shows file names from the current directory and opens the selected file.
 
 ```powershell
-$archivos = Get-ChildItem -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+$files = Get-ChildItem -File | Select-Object -ExpandProperty Name
 
-if ($null -eq $archivos -or $archivos.Count -eq 0) {
-    Write-Host "No se encontraron archivos en el directorio actual."
-    exit
+if (-not $files) {
+    Write-Host "No files found in the current directory."
+    exit 0
 }
 
-# Los nombres de archivo se pasan uno por línea a stdin
-$seleccion = $archivos | rmenu.exe -p "Selecciona un archivo:"
+$selectedFile = $files | rmenu.exe -p "Open file:"
 
-if ($LASTEXITCODE -eq 0 -and $seleccion) {
-    Write-Host "Archivo seleccionado: $seleccion"
-    # Acción de ejemplo: Abrir con el programa predeterminado
-    # Invoke-Item -Path (Join-Path -Path (Get-Location) -ChildPath $seleccion)
-    
-    # Acción de ejemplo: Abrir con Notepad
-    # notepad.exe (Join-Path -Path (Get-Location) -ChildPath $seleccion)
+if ($LASTEXITCODE -eq 0 -and $selectedFile) {
+    Start-Process $selectedFile
 } else {
-    Write-Host "Selección cancelada."
+    Write-Host "Selection cancelled."
 }
 ```
 
-### 4. Selector de Tema (Ejemplo Conceptual)
-Un script que podría cambiar el tema de una aplicación (simulado).
+### 4. Theme selector (conceptual)
+
+A script that could change an application theme.
 
 ```powershell
-$temasDisponibles = "Claro,Oscuro,Azul Metálico,Verde Bosque"
-$temaActual = "Claro" # Simular lectura de configuración actual
+$availableThemes = "Light,Dark,Metallic Blue,Forest Green"
+$currentTheme = "Light"
 
-$seleccionTema = rmenu.exe -p "Tema actual: $temaActual. Elige nuevo tema:" -e $temasDisponibles
+$selectedTheme = rmenu.exe -p "Theme ($currentTheme):" -e $availableThemes
 
-if ($LASTEXITCODE -eq 0 -and $seleccionTema) {
-    if ($seleccionTema -ne $temaActual) {
-        Write-Host "Cambiando tema a: $seleccionTema"
-        # Aquí iría la lógica para aplicar el cambio de tema
-        # Ejemplo: Set-AppTheme -Name $seleccionTema
-        $temaActual = $seleccionTema
-        Write-Host "Tema cambiado a $temaActual."
-    } else {
-        Write-Host "Has seleccionado el tema actual. No se realizaron cambios."
-    }
-} else {
-    Write-Host "Cambio de tema cancelado."
+if ($LASTEXITCODE -eq 0 -and $selectedTheme) {
+    Write-Host "Applying theme: $selectedTheme"
+    # Example: Set-AppTheme -Name $selectedTheme
 }
 ```
 
-## Consideraciones Adicionales
+---
 
-*   **Modo Silencioso (`-s`):**
-    Si tu script necesita una operación completamente limpia donde los mensajes de error de `rmenu` (como problemas al cargar `config.ini`) no deben aparecer en `stderr`, puedes usar `rmenu.exe -s ...`.
+## Tips
 
-*   **Manejo de Strings y Caracteres Especiales:**
-    *   Al pasar elementos a `-e`, si tus elementos contienen el delimitador (coma por defecto), `rmenu` los interpretará como elementos separados. Si un elemento *debe* contener una coma literal, necesitarás cambiar el `element_delimiter` en `config.ini` a otro carácter y usar ese nuevo delimitador.
-    *   PowerShell maneja el entrecomillado y los espacios en los argumentos pasados a ejecutables externos. Generalmente, si una variable contiene un string con espacios, PowerShell lo pasará correctamente.
+- **Silent mode:** Use `rmenu.exe -s ...` when the script needs a clean operation and non-critical `rmenu` diagnostics should not appear on `stderr`.
+- **Delimiter handling:** When passing items through `-e`, any item containing the configured delimiter will be split. If an item must contain a literal comma, change `element_delimiter` in `config.ini` and use the new delimiter.
+- **Quoting and spaces:** PowerShell usually passes variables with spaces correctly to external executables.
+- **Large lists:** `rmenu` is fast, but hundreds of thousands of options can affect performance, especially through `-e` vs `stdin`. Consider pre-filtering for extremely large lists.
+- **Character encoding:** PowerShell and `rmenu` generally handle Unicode well. Ensure your terminal and scripts use the required encoding when working with non-ASCII characters.
 
-*   **Rendimiento con Listas Muy Grandes:**
-    `rmenu` está diseñado para ser rápido. Sin embargo, pasar cientos de miles de opciones podría tener implicaciones de rendimiento, especialmente en la forma en que se pasan los datos (a través de `-e` vs. `stdin`). Para listas extremadamente largas, considera si `rmenu` es la herramienta más adecuada o si se necesita un pre-filtrado.
-
-*   **Codificación de Caracteres:**
-    PowerShell y `rmenu` (que internamente usa Rust Strings / UTF-8) generalmente manejan bien los caracteres Unicode. Asegúrate de que tu terminal y tus scripts estén configurados para manejar la codificación que necesitas si trabajas con caracteres no ASCII.
-
-Estos ejemplos deberían servir como un buen punto de partida para integrar `rmenu` en tus propios scripts de PowerShell. 
+These examples should be a useful starting point for integrating `rmenu` into your own PowerShell scripts.
