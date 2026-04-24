@@ -11,13 +11,13 @@ pub struct HostRequest {
 pub enum HostRequestPayload {
     Ping,
     Initialize(ModuleInitPayload),
-    OnLoad,
-    OnQueryChange { query: String },
-    OnKey { event: IpcKeyEvent },
-    ProvideItems { query: String },
-    DecorateItems { items: Vec<IpcItem> },
-    OnCommand { command: String, args: Vec<String> },
-    OnUnload,
+    OnLoad { snapshot: Option<IpcSnapshot> },
+    OnQueryChange { query: String, snapshot: IpcSnapshot },
+    OnKey { event: IpcKeyEvent, snapshot: IpcSnapshot },
+    ProvideItems { query: String, snapshot: IpcSnapshot },
+    DecorateItems { items: Vec<IpcItem>, snapshot: IpcSnapshot },
+    OnCommand { command: String, args: Vec<String>, snapshot: IpcSnapshot },
+    OnUnload { snapshot: Option<IpcSnapshot> },
     Shutdown,
 }
 
@@ -51,9 +51,18 @@ pub enum HostResponsePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum IpcAction {
+    SetQuery { text: String },
     SetInputAccessory(IpcInputAccessory),
     ClearInputAccessory,
     ReplaceItems { items: Vec<IpcItem> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpcSnapshot {
+    pub query: String,
+    pub items: Vec<IpcItem>,
+    pub selected_index: usize,
+    pub mode: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

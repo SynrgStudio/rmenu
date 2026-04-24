@@ -78,6 +78,8 @@ ctx.mode() -> "launcher" | "stdin" | "command"
 ctx.hasCapability(name: string) -> boolean
 ```
 
+External hosts receive real snapshots for these reads. Hot query paths may receive lightweight snapshots without `items`; hooks that need selection context, such as key and command flows, receive item/selection snapshots.
+
 ### Utilities
 
 ```ts

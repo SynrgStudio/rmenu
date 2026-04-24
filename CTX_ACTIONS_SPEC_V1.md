@@ -42,7 +42,10 @@ Rules:
 
 - values are snapshots,
 - returned values are not mutable references to core internals,
-- snapshots may be stale by the next event tick.
+- snapshots may be stale by the next event tick,
+- external hosts receive real snapshots,
+- the core may use lightweight snapshots without `items` on hot query paths to preserve input latency,
+- hooks that need selection context, such as `onKey` and `onCommand`, receive item/selection snapshots.
 
 ---
 

@@ -196,7 +196,80 @@ This module validates the “scoped intent mode” pattern: an explicit local in
 
 ---
 
-## 8. Common errors
+## 8. Included module: shortcuts
+
+`rmenu` includes a third validation module:
+
+```text
+modules/shortcuts.rmod
+```
+
+Behavior:
+
+- provides exact search aliases for favorite launch targets;
+- activates only when `input.trim()` exactly matches a configured `key` or `alias`;
+- does not activate for partial or extended input such as `bl`, `b foo`, or `1 foo`;
+- replaces the lower result list with the matched shortcut only;
+- shows a visual cue badge, for example `[b]`, on the right side of the row;
+- Enter runs the shortcut target through the normal launcher path.
+
+Default demo config:
+
+```text
+1 or b  -> Blender
+2 or t  -> Terminal
+```
+
+Expected example:
+
+```text
+b
+```
+
+```text
+Blender    C:\Program Files\Blender Foundation\Blender 5.0\blender-launcher.exe    [b]
+```
+
+Non-activating examples that fall back to normal launcher search:
+
+```text
+bl
+b foo
+1 foo
+```
+
+This module validates exact alias shortcuts without global hotkeys, ranking boosts, or new core primitives.
+
+### Adding a user shortcut
+
+1. Search for a normal launcher item.
+2. Select it.
+3. Press `Ctrl+B`.
+4. The input changes to:
+
+```text
+/shortcuts::bind 
+```
+
+5. Type the alias, for example:
+
+```text
+/shortcuts::bind bs
+```
+
+6. Press Enter.
+
+The shortcut is saved to:
+
+```text
+modules/shortcuts.user.json
+```
+
+After that, typing `bs` and pressing Enter launches the selected target.
+
+---
+
+## 9. Common errors
 
 ### `RMOD_E_INVALID_MAGIC`
 
@@ -239,7 +312,7 @@ Fix:
 
 ---
 
-## 9. Quick capability reference
+## 10. Quick capability reference
 
 | Goal | Capability |
 |---|---|
@@ -253,7 +326,7 @@ Declare only what is needed.
 
 ---
 
-## 10. Related contracts
+## 11. Related contracts
 
 Read in this order:
 

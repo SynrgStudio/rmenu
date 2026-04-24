@@ -267,14 +267,16 @@ This pattern keeps two UX paths separate: passive global launcher and explicit l
 
 1. Hooks must be fast and deterministic.
 2. Do not block on I/O without your own timeout.
-3. Providers should return a small set of relevant items.
-4. Do not assume control of UI or pixels.
-5. Normalize internal inputs before processing.
-6. Treat errors as recoverable.
-7. Log useful context.
-8. Do not depend on core internals.
-9. Do not declare capabilities “just in case”.
-10. Test with `--modules-debug`.
+3. Avoid synchronous disk I/O in `onQueryChange`; cache data in memory and update the cache after writes.
+4. Providers should return a small set of relevant items.
+5. Do not assume `ctx.items()` is populated on every hot query hook; use key/command flows when selection context is required.
+6. Do not assume control of UI or pixels.
+7. Normalize internal inputs before processing.
+8. Treat errors as recoverable.
+9. Log useful context.
+10. Do not depend on core internals.
+11. Do not declare capabilities “just in case”.
+12. Test with `--modules-debug`.
 
 ---
 

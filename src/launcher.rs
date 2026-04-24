@@ -60,15 +60,6 @@ pub fn compact_target_hint(target: &str) -> String {
     abbreviate_target(target, 44)
 }
 
-fn trim_outer_quotes(value: &str) -> &str {
-    let trimmed = value.trim();
-    if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
-        &trimmed[1..trimmed.len() - 1]
-    } else {
-        trimmed
-    }
-}
-
 fn split_executable_and_args(raw: &str) -> (&str, Option<&str>) {
     let input = raw.trim();
     if input.is_empty() {
@@ -174,7 +165,7 @@ fn launch_with_cmd_start(raw_target: &str) -> io::Result<()> {
 }
 
 pub fn launch_target(target: &str) -> io::Result<()> {
-    let raw_target = trim_outer_quotes(target);
+    let raw_target = target.trim();
     if raw_target.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -216,21 +207,17 @@ pub fn launch_target(target: &str) -> io::Result<()> {
 mod tests {
     use super::{
         looks_like_path, looks_like_url, should_fallback_to_cmd, split_executable_and_args,
-        trim_outer_quotes,
     };
-
-    #[test]
-    fn trim_outer_quotes_removes_outer_quotes() {
-        assert_eq!(trim_outer_quotes("\"C:/Tools/app.exe\""), "C:/Tools/app.exe");
-        assert_eq!(trim_outer_quotes("  \"cmd\"  "), "cmd");
-        assert_eq!(trim_outer_quotes("notepad"), "notepad");
-    }
 
     #[test]
     fn split_executable_and_args_parses_quoted_targets() {
         let (file, args) = split_executable_and_args("\"C:/Program Files/App/app.exe\" --flag 1");
         assert_eq!(file, "C:/Program Files/App/app.exe");
         assert_eq!(args, Some("--flag 1"));
+
+        let (file, args) = split_executable_and_args("\"C:/Program Files/App/app.exe\"");
+        assert_eq!(file, "C:/Program Files/App/app.exe");
+        assert_eq!(args, None);
     }
 
     #[test]

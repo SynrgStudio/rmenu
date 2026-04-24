@@ -1,3 +1,6 @@
 /target
 DOCUMENTATION.md
 /extras
+
+# User-local shortcut bindings
+modules/shortcuts.user.json

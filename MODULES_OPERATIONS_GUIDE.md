@@ -211,7 +211,100 @@ If fuzzy/global results appear inside `>`, check that the module calls `ctx.repl
 
 ---
 
-## 10. Common errors
+## 10. Manual validation: shortcuts
+
+The `modules/shortcuts.rmod` module validates exact search aliases for favorite launch targets.
+
+Manual test:
+
+1. Run `rmenu` from the project root.
+2. Type:
+
+```text
+b
+```
+
+Expected result:
+
+- the list shows only Blender;
+- the row shows the `[b]` visual cue badge;
+- the input accessory shows `shortcut: Blender`;
+- pressing Enter launches `C:\Program Files\Blender Foundation\Blender 5.0\blender-launcher.exe`.
+
+3. Type:
+
+```text
+1
+```
+
+Expected result:
+
+- Blender appears as the matched shortcut;
+- the row still shows `[b]` as the visual cue;
+- pressing Enter launches Blender.
+
+4. Type non-exact inputs:
+
+```text
+bl
+b foo
+1 foo
+```
+
+Expected result:
+
+- the shortcuts module does not activate;
+- normal global launcher search is used.
+
+If the shortcut activates for partial input, check that the module compares `input.trim()` against `key` and `alias` exactly, not with `startsWith`.
+
+### Add-shortcut validation
+
+1. Search for a normal launcher item, for example Bambu Studio.
+2. Select it.
+3. Press `Ctrl+B`.
+
+Expected result:
+
+- the input changes to `/shortcuts::bind `;
+- the accessory says `binding <title>: type alias and press Enter`.
+
+4. Type the alias after the command:
+
+```text
+/shortcuts::bind bs
+```
+
+5. Press Enter.
+6. Restart or reopen `rmenu` if needed, then type:
+
+```text
+bs
+```
+
+Expected result:
+
+- the newly bound item appears as the only shortcut result;
+- the row shows `[bs]` as visual cue;
+- Enter launches the saved target.
+
+User-defined shortcuts are persisted in:
+
+```text
+modules/shortcuts.user.json
+```
+
+### Latency validation
+
+With `shortcuts` loaded, typing normal text should remain immediate. Plain text key presses are not dispatched to module key hooks, and hot query snapshots are lightweight. If input feels delayed:
+
+- confirm the release binary was rebuilt with `cargo build --release`;
+- check that modules do not perform synchronous disk I/O in `onQueryChange`;
+- inspect `--modules-debug` for host errors/timeouts.
+
+---
+
+## 11. Common errors
 
 ### `RMOD_E_INVALID_MAGIC`
 
@@ -249,7 +342,7 @@ The module exceeded the consecutive error/timeout threshold.
 
 ---
 
-## 11. Recommended diagnostic flow
+## 12. Recommended diagnostic flow
 
 1. Run:
 
@@ -278,7 +371,7 @@ rmenu.exe --modules-debug
 
 ---
 
-## 12. Recovery
+## 13. Recovery
 
 If a module is broken:
 
@@ -290,7 +383,7 @@ If a module is broken:
 
 ---
 
-## 13. Health signals
+## 14. Health signals
 
 A healthy system should show:
 

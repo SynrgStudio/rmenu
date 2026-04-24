@@ -160,17 +160,33 @@ Checklist:
 - [x] Confirm no conceptual core change is required.
 - [x] Document friction.
 
-## 2.3 Real module: hotkeys/quick actions
+## 2.3 Real module: shortcuts / quick actions
 
-Status: pending.
+Status: implemented with `modules/shortcuts.rmod`; pending manual Enter validation.
 
-- [ ] Create a module using quick-select keys or key hooks.
-- [ ] Declare `keys` capability.
-- [ ] Confirm denial without capability.
-- [ ] Confirm duplicate quick-select behavior.
-- [ ] Confirm warnings/debug output are understandable.
-- [ ] Confirm no core change is required.
-- [ ] Document friction.
+UX decision:
+
+- exact shortcut aliases activate only when `input.trim()` equals a configured `key` or `alias`;
+- `1` and `b` activate Blender in the default demo config;
+- `bl`, `b foo`, and `1 foo` do not activate shortcuts and fall back to normal launcher search;
+- the shortcut row shows the alias cue as a badge, for example `[b]`;
+- Enter executes the selected target through the normal launcher path.
+
+Checklist:
+
+- [x] Create a shortcut/quick-action module.
+- [x] Use `ctx.replaceItems([item])` for exact alias matches.
+- [x] Show visual keybinding cue via item badge.
+- [x] Declare capabilities required for binding flow (`input-accessory`, `commands`, `keys`).
+- [x] Use external `ctx.selectedItem()` snapshot for `Ctrl+B` binding flow.
+- [x] Use external `ctx.setQuery(...)` action to prefill `/shortcuts::bind `.
+- [ ] Manually confirm Blender launches via `b` + Enter.
+- [ ] Manually confirm Blender launches via `1` + Enter.
+- [ ] Manually confirm non-exact inputs do not activate shortcuts.
+- [x] Manually confirm plain text input remains immediate with `shortcuts` loaded.
+- [ ] Manually confirm adding a new shortcut with `Ctrl+B` + `/shortcuts::bind <alias>`.
+- [x] Confirm core changes are v1 contract corrections/general actions, not shortcut-specific behavior.
+- [x] Document behavior.
 
 ## 2.4 Friction review
 
@@ -185,6 +201,7 @@ Known frictions:
 2. Input accessory rendered `[success]` — resolved as UI primitive rendering bug.
 3. Undeclared hooks generated noisy permission errors — resolved as capability routing bug.
 4. Exact provider intent vs global fuzzy ranking — resolved as documentation/pattern issue for `local-scripts` v2 through explicit `>` prefix + `ctx.replaceItems(items)` scoped intent mode, without adding a new primitive.
+5. Shortcut keybinding vs key hooks — resolved for v1 as exact search aliases using `ctx.replaceItems([item])`, plus a `Ctrl+B` binding flow that uses general external ctx snapshot and `setQuery` support. Plain text keys are not dispatched to module key hooks and hot query snapshots omit items to avoid input latency.
 
 ---
 
@@ -276,7 +293,7 @@ Do not start yet.
 
 Blockers:
 
-- need at least three real modules validated,
+- need manual validation of the third real module (`shortcuts`),
 - need hardening,
 - need specific tests,
 - need minimum performance validation.

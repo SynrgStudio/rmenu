@@ -7,10 +7,11 @@ Branch: `main`
 
 ## Executive summary
 
-`rmenu` has a working launcher core and two real modules validated:
+`rmenu` has a working launcher core and three real modules validated:
 
 - `calculator.rmod`
 - `local-scripts.rmod`
+- `shortcuts.rmod`
 
 The module system supports external `.rmod` modules and directory modules with `module.toml`, external host, IPC, capabilities, providers, commands, input accessories, key hooks, decorations, quick select, dedupe, diagnostics, and runtime actions.
 
@@ -19,6 +20,7 @@ Validated functionality:
 - stable launcher core;
 - real `calculator` module working;
 - real `local-scripts` module working;
+- real `shortcuts` module working;
 - `InputAccessory` from external modules end-to-end;
 - `ctx.replaceItems([])` from external modules to suppress fuzzy results during calculations;
 - `ctx.replaceItems(items)` from external modules to implement scoped intent mode;
@@ -40,7 +42,7 @@ cargo run --bin rmenu -- --modules-debug
 Current test result:
 
 ```text
-44 tests passed
+45 tests passed
 0 failed
 ```
 
@@ -120,6 +122,46 @@ modules/local-scripts/scripts/open-logs.cmd
 
 Key decision: `local-scripts` v2 does not compete as a global provider. It uses explicit intent with the `>` prefix and `ctx.replaceItems(items)` to enter scoped mode. This avoids ranking, boost, and global dedupe changes.
 
+### 3. Shortcuts
+
+File:
+
+```text
+modules/shortcuts.rmod
+```
+
+Status: working and manually validated, including user-created bindings.
+
+Expected behavior:
+
+- `b` shows Blender as the only shortcut result with `[b]` as the visual cue;
+- `1` also shows Blender and keeps `[b]` as the visual cue;
+- `bl`, `b foo`, and `1 foo` do not activate the shortcut and fall back to normal launcher search;
+- Enter on the shortcut launches:
+
+```text
+C:\Program Files\Blender Foundation\Blender 5.0\blender-launcher.exe
+```
+
+Default shortcuts:
+
+```text
+1 / b -> Blender
+2 / t -> Terminal
+```
+
+Add-shortcut flow:
+
+1. Search/select a normal launcher item.
+2. Press `Ctrl+B`.
+3. `shortcuts.rmod` reads `ctx.selectedItem()` from the external ctx snapshot.
+4. The core applies external `ctx.setQuery('/shortcuts::bind ')`.
+5. Type an alias, for example `/shortcuts::bind bs`, and press Enter.
+6. The module writes the binding to `modules/shortcuts.user.json`.
+7. Typing the alias launches the saved target.
+
+Key decision: shortcuts v1 are exact search aliases, not global hotkeys. Binding uses the general `keys`, `commands`, ctx snapshot, and `setQuery` action path; no shortcut-specific core behavior is added.
+
 ---
 
 ## Functional core changes present
@@ -131,7 +173,12 @@ Key decision: `local-scripts` v2 does not compete as a global provider. It uses 
 - UI cycle respects `replaceItems([])` and `replaceItems(items)`;
 - `input_accessory_text()` renders only `accessory.text`;
 - external hooks without capability are not invoked and do not generate `permission_denied` spam;
-- external `ReplaceItems` actions update the real visible `AppState`.
+- external `ReplaceItems` actions update the real visible `AppState`;
+- external ctx snapshots expose query, items, selected item/index, and mode to JS modules;
+- external `SetQuery` actions can update the input, enabling command-prefill flows such as shortcut binding;
+- restart backoff remains enforced silently to avoid noisy operational stderr during normal launcher use;
+- plain text key presses are not dispatched to module key hooks, avoiding input latency while preserving modified keys like `Ctrl+B`;
+- hot query snapshots omit item lists, while key/command snapshots include selected item context, preserving fast input and binding UX.
 
 ---
 
@@ -223,18 +270,23 @@ Optional pending:
 
 - register namespaced commands, for example `/local-scripts::list` or `/local-scripts::reload`.
 
-#### 2.3 Hotkeys/quick actions
+#### 2.3 Shortcuts / quick actions
 
-Status: pending.
+Status: validated with `shortcuts.rmod`.
 
-Pending:
+Completed:
 
-- create module that uses quick-select keys or key hooks;
-- declare `keys` capability;
-- confirm denial without capability;
-- confirm duplicate quick-select behavior;
-- confirm warnings/debug output;
-- confirm no core change is required.
+- `.rmod` module created;
+- exact alias matching for `key` and `alias`;
+- `b` and `1` activate Blender;
+- non-exact inputs such as `bl`, `b foo`, and `1 foo` fall back to normal launcher search;
+- visual cue badge shows `[b]`;
+- Blender launch path with spaces was fixed by preserving quotes in `launch_target` parsing;
+- `Ctrl+B` binding flow implemented using `keys`, `commands`, external ctx snapshot, and `SetQuery` action;
+- user shortcuts persist to `modules/shortcuts.user.json`;
+- plain text input remains immediate with `shortcuts` loaded;
+- user-created bindings were manually validated;
+- no shortcut-specific core behavior is required.
 
 #### 2.4 Friction review
 
@@ -253,6 +305,9 @@ Known frictions:
 
 4. Provider exact intent vs global fuzzy/core ranking.
    - Resolved for `local-scripts` v2 without a new primitive: explicit `>` prefix + `ctx.replaceItems(items)` scoped intent mode.
+
+5. Shortcut keybinding vs key hooks.
+   - Resolved for v1 as exact search aliases using `ctx.replaceItems([item])`, with `Ctrl+B` used only to start an explicit bind command flow. Plain text keys are not dispatched to module key hooks and hot query snapshots omit items to preserve input latency.
 
 ---
 
@@ -273,9 +328,9 @@ Pending validation/hardening:
 
 ### Phase 4 — Tests and verification
 
-Existing tests: 44.
+Existing tests: 45.
 
-Covered by current tests includes: `.rmod` parser basics, duplicate/missing blocks, mixed loader, dedupe, command collisions, quick-select duplicate behavior, input accessory kind/priority mapping, host health disable after timeouts, runtime module commands, and external `ReplaceItems` action applying to visible items.
+Covered by current tests includes: `.rmod` parser basics, duplicate/missing blocks, quoted executable target parsing, mixed loader, dedupe, command collisions, quick-select duplicate behavior, input accessory kind/priority mapping, host health disable after timeouts, runtime module commands, external `ReplaceItems` action applying to visible items, external `SetQuery` action updating input, and key-hook dispatch filtering for plain text input.
 
 Pending tests:
 
@@ -305,7 +360,7 @@ Do not start yet.
 
 Blockers:
 
-- need at least three real modules validated;
+- need manual validation of the third real module (`shortcuts`);
 - need hardening;
 - need specific tests;
 - need minimum performance validation.
@@ -314,17 +369,7 @@ Blockers:
 
 ## Recommended next step
 
-Move to Phase 2.3: hotkeys/quick actions.
-
-Suggested module goal:
-
-- validate `keys` capability routing;
-- validate denial without `keys`;
-- validate quick-select/key-hook UX;
-- confirm duplicate quick-select warnings remain understandable;
-- avoid adding new core primitives.
-
-After that, proceed with Phase 3 hardening and targeted tests.
+Phase 2 now has three real modules validated. Move next to Phase 3 hardening plus targeted tests.
 
 ---
 

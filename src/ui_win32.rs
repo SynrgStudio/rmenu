@@ -384,6 +384,8 @@ fn resolve_key_name(key_code: i32) -> String {
         code if code == VK_BACK.0 as i32 => "backspace".to_string(),
         code if code == VK_UP.0 as i32 => "up".to_string(),
         code if code == VK_DOWN.0 as i32 => "down".to_string(),
+        code if (0x30..=0x39).contains(&code) => char::from_u32(code as u32).unwrap_or('?').to_string(),
+        code if (0x41..=0x5A).contains(&code) => char::from_u32((code + 32) as u32).unwrap_or('?').to_string(),
         _ => format!("vk_{key_code}"),
     }
 }
@@ -741,11 +743,16 @@ unsafe extern "system" fn window_proc(
             let mut app_state_guard = APP_STATE.lock().unwrap();
             if let Some(app_state) = app_state_guard.as_mut() {
                 let module_key_event = build_module_key_event(key_code);
+                let input_before_modules = app_state.current_input.clone();
                 {
                     let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
                     if let Some(runtime) = runtime_guard.as_mut() {
                         runtime.run_on_key(app_state, &module_key_event);
                     }
+                }
+                if app_state.current_input != input_before_modules {
+                    update_matching_items_from_config(app_state);
+                    InvalidateRect(hwnd, None, true);
                 }
 
                 if key_code == VK_ESCAPE.0 as i32 {

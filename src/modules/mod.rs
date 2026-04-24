@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use host_client::{ExternalModuleHost, HostClientError};
-use ipc::{IpcAction, IpcInputAccessory, IpcItem, IpcKeyEvent};
+use ipc::{IpcAction, IpcInputAccessory, IpcItem, IpcKeyEvent, IpcSnapshot};
 use loader::discover_module_descriptors;
 
 use crate::app_state::{AppState, LauncherItem, LauncherSource};
@@ -469,7 +469,8 @@ impl ModuleRuntime {
         let mut telemetry_events: Vec<(String, u128, bool, bool, Option<String>)> = Vec::new();
         for host in &mut self.external_hosts {
             let started = Instant::now();
-            match host.on_query_change(&query) {
+            let snapshot = ipc_snapshot_from_app_state(app_state, false);
+            match host.on_query_change(&query, snapshot) {
                 Ok(actions) => {
                     Self::apply_ipc_actions(
                         &host.module_name,
@@ -513,6 +514,10 @@ impl ModuleRuntime {
     }
 
     pub fn run_on_key(&mut self, app_state: &mut AppState, event: &ModuleKeyEvent) {
+        if !should_dispatch_module_key_event(event) {
+            return;
+        }
+
         for module in &mut self.modules {
             let module_name = module.name().to_string();
             let snapshot = snapshot_from_app_state(app_state);
@@ -535,7 +540,8 @@ impl ModuleRuntime {
             }
 
             let started = Instant::now();
-            match host.on_key(module_key_event_to_ipc_key_event(event)) {
+            let snapshot = ipc_snapshot_from_app_state(app_state, true);
+            match host.on_key(module_key_event_to_ipc_key_event(event), snapshot) {
                 Ok(actions) => {
                     Self::apply_ipc_actions(
                         &host.module_name,
@@ -622,7 +628,8 @@ impl ModuleRuntime {
             }
 
             let started = Instant::now();
-            match host.provide_items(&query) {
+            let snapshot = ipc_snapshot_from_app_state(app_state, false);
+            match host.provide_items(&query, snapshot) {
                 Ok(mut items) => {
                     if items.len() > self.policy.max_items_per_provider_host {
                         items.truncate(self.policy.max_items_per_provider_host);
@@ -721,7 +728,8 @@ impl ModuleRuntime {
             }
 
             let started = Instant::now();
-            match host.on_command(&route.command, args) {
+            let snapshot = ipc_snapshot_from_app_state(app_state, true);
+            match host.on_command(&route.command, args, snapshot) {
                 Ok(actions) => {
                     Self::apply_ipc_actions(
                         &host.module_name,
@@ -797,7 +805,8 @@ impl ModuleRuntime {
             }
 
             let started = Instant::now();
-            match host.decorate_items(ipc_items.clone()) {
+            let snapshot = ipc_snapshot_from_app_state(app_state, false);
+            match host.decorate_items(ipc_items.clone(), snapshot) {
                 Ok(next_items) => {
                     ipc_items = sanitize_ipc_items(next_items, &host.module_name, app_state.silent_mode);
                     telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
@@ -1124,12 +1133,6 @@ impl ModuleRuntime {
         let now = Instant::now();
         if let Some(last_attempt) = self.last_restart_attempt.get(module_name) {
             if now.duration_since(*last_attempt).as_millis() < self.policy.host_restart_backoff_ms as u128 {
-                if !silent_mode {
-                    eprintln!(
-                        "module '{}' restart skipped by backoff ({}ms)",
-                        module_name, self.policy.host_restart_backoff_ms
-                    );
-                }
                 return;
             }
         }
@@ -1195,6 +1198,7 @@ impl ModuleRuntime {
         let mut ctx = ModuleCtx::new(module_name.to_string(), snapshot);
         for action in actions {
             match action {
+                IpcAction::SetQuery { text } => ctx.set_query(text),
                 IpcAction::SetInputAccessory(accessory) => {
                     ctx.set_input_accessory(module_input_accessory_from_ipc(accessory));
                 }
@@ -1324,6 +1328,17 @@ fn module_key_event_to_ipc_key_event(event: &ModuleKeyEvent) -> IpcKeyEvent {
     }
 }
 
+fn should_dispatch_module_key_event(event: &ModuleKeyEvent) -> bool {
+    if event.ctrl || event.alt || event.meta {
+        return true;
+    }
+
+    matches!(
+        event.key.as_str(),
+        "enter" | "escape" | "tab" | "backspace" | "up" | "down"
+    )
+}
+
 fn dedupe_launcher_items_by_priority(groups: Vec<Vec<LauncherItem>>) -> Vec<LauncherItem> {
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut output = Vec::new();
@@ -1382,6 +1397,28 @@ fn snapshot_from_app_state(app_state: &AppState) -> ModuleSnapshot {
         } else {
             ModuleMode::Stdin
         },
+    }
+}
+
+fn ipc_snapshot_from_app_state(app_state: &AppState, include_items: bool) -> IpcSnapshot {
+    let mode = if app_state.launcher_mode { "launcher" } else { "stdin" }.to_string();
+    let items = if include_items {
+        app_state
+            .matching_items
+            .iter()
+            .cloned()
+            .map(module_item_from_launcher_item)
+            .map(module_item_to_ipc_item)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    IpcSnapshot {
+        query: app_state.current_input.clone(),
+        items,
+        selected_index: app_state.selected_index,
+        mode,
     }
 }
 
@@ -1938,6 +1975,54 @@ mod tests {
         assert_eq!(provider_first[0].label, "Provider A");
         assert_eq!(provider_first[1].label, "Provider B");
         assert_eq!(provider_first[2].label, "Core B");
+    }
+
+    #[test]
+    fn plain_text_keys_are_not_dispatched_to_modules() {
+        assert!(!super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
+            key: "a".to_string(),
+            ctrl: false,
+            alt: false,
+            shift: false,
+            meta: false,
+        }));
+        assert!(!super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
+            key: "1".to_string(),
+            ctrl: false,
+            alt: false,
+            shift: false,
+            meta: false,
+        }));
+        assert!(super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
+            key: "b".to_string(),
+            ctrl: true,
+            alt: false,
+            shift: false,
+            meta: false,
+        }));
+        assert!(super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
+            key: "enter".to_string(),
+            ctrl: false,
+            alt: false,
+            shift: false,
+            meta: false,
+        }));
+    }
+
+    #[test]
+    fn ipc_set_query_updates_app_input() {
+        let mut app_state = AppState {
+            current_input: "before".to_string(),
+            ..Default::default()
+        };
+        let mut state = super::ModuleRuntimeState::default();
+        let actions = vec![IpcAction::SetQuery {
+            text: "/shortcuts::bind ".to_string(),
+        }];
+
+        ModuleRuntime::apply_ipc_actions("shortcuts", actions, &mut app_state, &mut state, None);
+
+        assert_eq!(app_state.current_input, "/shortcuts::bind ");
     }
 
     #[test]

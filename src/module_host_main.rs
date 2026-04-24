@@ -6,7 +6,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use ipc::{
     HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem, IpcKeyEvent,
-    ModuleInitPayload,
+    IpcSnapshot, ModuleInitPayload,
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +46,7 @@ enum WorkerRequest {
         items: Option<Vec<IpcItem>>,
         command: Option<String>,
         args: Option<Vec<String>>,
+        snapshot: Option<IpcSnapshot>,
     },
     #[serde(rename = "shutdown")]
     Shutdown,
@@ -112,6 +113,7 @@ impl NodeRuntime {
         items: Option<Vec<IpcItem>>,
         command: Option<String>,
         args: Option<Vec<String>>,
+        snapshot: Option<IpcSnapshot>,
         max_ipc_payload_bytes: usize,
     ) -> Result<WorkerResponse, String> {
         self.send(
@@ -122,6 +124,7 @@ impl NodeRuntime {
                 items,
                 command,
                 args,
+                snapshot,
             },
             max_ipc_payload_bytes,
         )
@@ -234,67 +237,67 @@ fn handle_request(request: HostRequest, state: &mut HostState) -> HostResponse {
                 },
             }
         }
-        HostRequestPayload::OnLoad => {
+        HostRequestPayload::OnLoad { snapshot } => {
             state.loaded = true;
-            run_hook(state, "onLoad", None, None, None, None, None).unwrap_or(HostResponsePayload::Ack)
+            run_hook(state, "onLoad", None, None, None, None, None, snapshot).unwrap_or(HostResponsePayload::Ack)
         }
-        HostRequestPayload::OnQueryChange { query } => {
+        HostRequestPayload::OnQueryChange { query, snapshot } => {
             if !state.loaded {
                 HostResponsePayload::Error {
                     message: "module not loaded".to_string(),
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "onQueryChange", Some(query), None, None, None, None)
+                run_hook(state, "onQueryChange", Some(query), None, None, None, None, Some(snapshot))
                     .unwrap_or(HostResponsePayload::Ack)
             }
         }
-        HostRequestPayload::OnKey { event } => {
+        HostRequestPayload::OnKey { event, snapshot } => {
             if !state.loaded {
                 HostResponsePayload::Error {
                     message: "module not loaded".to_string(),
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "onKey", None, Some(event), None, None, None)
+                run_hook(state, "onKey", None, Some(event), None, None, None, Some(snapshot))
                     .unwrap_or(HostResponsePayload::Ack)
             }
         }
-        HostRequestPayload::ProvideItems { query } => {
+        HostRequestPayload::ProvideItems { query, snapshot } => {
             if !state.loaded {
                 HostResponsePayload::Error {
                     message: "module not loaded".to_string(),
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "provideItems", Some(query), None, None, None, None)
+                run_hook(state, "provideItems", Some(query), None, None, None, None, Some(snapshot))
                     .unwrap_or(HostResponsePayload::ProvideItemsResult { items: Vec::new() })
             }
         }
-        HostRequestPayload::DecorateItems { items } => {
+        HostRequestPayload::DecorateItems { items, snapshot } => {
             if !state.loaded {
                 HostResponsePayload::Error {
                     message: "module not loaded".to_string(),
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "decorateItems", None, None, Some(items), None, None)
+                run_hook(state, "decorateItems", None, None, Some(items), None, None, Some(snapshot))
                     .unwrap_or(HostResponsePayload::DecorateItemsResult { items: Vec::new() })
             }
         }
-        HostRequestPayload::OnCommand { command, args } => {
+        HostRequestPayload::OnCommand { command, args, snapshot } => {
             if !state.loaded {
                 HostResponsePayload::Error {
                     message: "module not loaded".to_string(),
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "onCommand", None, None, None, Some(command), Some(args)).unwrap_or(HostResponsePayload::Ack)
+                run_hook(state, "onCommand", None, None, None, Some(command), Some(args), Some(snapshot)).unwrap_or(HostResponsePayload::Ack)
             }
         }
-        HostRequestPayload::OnUnload => {
+        HostRequestPayload::OnUnload { snapshot } => {
             state.loaded = false;
-            let _ = run_hook(state, "onUnload", None, None, None, None, None);
+            let _ = run_hook(state, "onUnload", None, None, None, None, None, snapshot);
             HostResponsePayload::Ack
         }
         HostRequestPayload::Shutdown => {
@@ -318,6 +321,7 @@ fn run_hook(
     items: Option<Vec<IpcItem>>,
     command: Option<String>,
     args: Option<Vec<String>>,
+    snapshot: Option<IpcSnapshot>,
 ) -> Option<HostResponsePayload> {
     let runtime = state.runtime.as_mut()?;
     let response = runtime
@@ -328,6 +332,7 @@ fn run_hook(
             items,
             command,
             args,
+            snapshot,
             state.max_ipc_payload_bytes,
         )
         .ok()?;
@@ -373,20 +378,26 @@ import readline from 'node:readline';
 let moduleInstance = null;
 let moduleConfig = null;
 
-function createCtx(configObj) {
+function createCtx(configObj, snapshotObj) {
   const actions = [];
   const noop = () => {};
+  const snapshot = snapshotObj && typeof snapshotObj === 'object' ? snapshotObj : {};
+  const snapshotItems = Array.isArray(snapshot.items) ? snapshot.items : [];
+  const selectedIndex = Number.isInteger(snapshot.selected_index) ? snapshot.selected_index : 0;
   return {
     takeActions: () => actions.splice(0),
-    query: () => '',
-    items: () => [],
-    selectedItem: () => null,
-    selectedIndex: () => 0,
-    mode: () => 'launcher',
+    query: () => typeof snapshot.query === 'string' ? snapshot.query : '',
+    items: () => snapshotItems.slice(),
+    selectedItem: () => snapshotItems[selectedIndex] || null,
+    selectedIndex: () => selectedIndex,
+    mode: () => typeof snapshot.mode === 'string' ? snapshot.mode : 'launcher',
     hasCapability: () => false,
     log: noop,
     toast: noop,
-    setQuery: noop,
+    setQuery: (text) => actions.push({
+      type: 'SetQuery',
+      data: { text: typeof text === 'string' ? text : String(text ?? '') }
+    }),
     setSelection: noop,
     moveSelection: noop,
     submit: noop,
@@ -443,7 +454,7 @@ async function handleMessage(raw) {
     return { ok: false, error: 'module instance not initialized' };
   }
 
-  const ctx = createCtx(moduleConfig);
+  const ctx = createCtx(moduleConfig, message.snapshot);
   const okWithActions = (extra = {}) => ({ ok: true, actions: ctx.takeActions(), ...extra });
 
   switch (message.hook) {

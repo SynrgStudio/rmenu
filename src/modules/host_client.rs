@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use super::ipc::{
     HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem, IpcKeyEvent,
-    ModuleInitPayload,
+    IpcSnapshot, ModuleInitPayload,
 };
 use super::types::ModuleDescriptor;
 
@@ -86,7 +86,7 @@ impl ExternalModuleHost {
             }
         }
 
-        match host.send_request(HostRequestPayload::OnLoad)? {
+        match host.send_request(HostRequestPayload::OnLoad { snapshot: None })? {
             HostResponsePayload::Ack => {}
             HostResponsePayload::Error { message, .. } => {
                 return Err(HostClientError::Protocol(format!("onLoad failed: {message}")))
@@ -101,22 +101,24 @@ impl ExternalModuleHost {
         Ok(host)
     }
 
-    pub fn on_query_change(&mut self, query: &str) -> Result<Vec<IpcAction>, HostClientError> {
+    pub fn on_query_change(&mut self, query: &str, snapshot: IpcSnapshot) -> Result<Vec<IpcAction>, HostClientError> {
         actions_from_response(
             self.send_request(HostRequestPayload::OnQueryChange {
                 query: query.to_string(),
+                snapshot,
             })?,
             "OnQueryChange",
         )
     }
 
-    pub fn on_key(&mut self, event: IpcKeyEvent) -> Result<Vec<IpcAction>, HostClientError> {
-        actions_from_response(self.send_request(HostRequestPayload::OnKey { event })?, "OnKey")
+    pub fn on_key(&mut self, event: IpcKeyEvent, snapshot: IpcSnapshot) -> Result<Vec<IpcAction>, HostClientError> {
+        actions_from_response(self.send_request(HostRequestPayload::OnKey { event, snapshot })?, "OnKey")
     }
 
-    pub fn provide_items(&mut self, query: &str) -> Result<Vec<IpcItem>, HostClientError> {
+    pub fn provide_items(&mut self, query: &str, snapshot: IpcSnapshot) -> Result<Vec<IpcItem>, HostClientError> {
         match self.send_request(HostRequestPayload::ProvideItems {
             query: query.to_string(),
+            snapshot,
         })? {
             HostResponsePayload::ProvideItemsResult { items } => Ok(items),
             HostResponsePayload::Error { message, .. } => Err(HostClientError::Protocol(message)),
@@ -126,8 +128,8 @@ impl ExternalModuleHost {
         }
     }
 
-    pub fn decorate_items(&mut self, items: Vec<IpcItem>) -> Result<Vec<IpcItem>, HostClientError> {
-        match self.send_request(HostRequestPayload::DecorateItems { items })? {
+    pub fn decorate_items(&mut self, items: Vec<IpcItem>, snapshot: IpcSnapshot) -> Result<Vec<IpcItem>, HostClientError> {
+        match self.send_request(HostRequestPayload::DecorateItems { items, snapshot })? {
             HostResponsePayload::DecorateItemsResult { items } => Ok(items),
             HostResponsePayload::Error { message, .. } => Err(HostClientError::Protocol(message)),
             other => Err(HostClientError::Protocol(format!(
@@ -136,18 +138,19 @@ impl ExternalModuleHost {
         }
     }
 
-    pub fn on_command(&mut self, command: &str, args: &[String]) -> Result<Vec<IpcAction>, HostClientError> {
+    pub fn on_command(&mut self, command: &str, args: &[String], snapshot: IpcSnapshot) -> Result<Vec<IpcAction>, HostClientError> {
         actions_from_response(
             self.send_request(HostRequestPayload::OnCommand {
                 command: command.to_string(),
                 args: args.to_vec(),
+                snapshot,
             })?,
             "OnCommand",
         )
     }
 
     pub fn shutdown(&mut self) {
-        let _ = self.send_request(HostRequestPayload::OnUnload);
+        let _ = self.send_request(HostRequestPayload::OnUnload { snapshot: None });
         let _ = self.send_request(HostRequestPayload::Shutdown);
         self.force_kill();
     }
