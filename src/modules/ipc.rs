@@ -42,9 +42,25 @@ pub struct HostResponse {
 pub enum HostResponsePayload {
     Pong,
     Ack,
+    Actions { actions: Vec<IpcAction> },
     ProvideItemsResult { items: Vec<IpcItem> },
     DecorateItemsResult { items: Vec<IpcItem> },
     Error { message: String, recoverable: bool },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum IpcAction {
+    SetInputAccessory(IpcInputAccessory),
+    ClearInputAccessory,
+    ReplaceItems { items: Vec<IpcItem> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpcInputAccessory {
+    pub text: String,
+    pub kind: Option<String>,
+    pub priority: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

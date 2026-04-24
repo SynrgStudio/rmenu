@@ -15,6 +15,7 @@ pub struct ModuleRuntimeState {
     pub registered_commands: BTreeMap<String, ModuleCommandDef>,
     pub registered_providers: BTreeMap<String, ModuleProviderDef>,
     pub active_input_accessory: Option<(String, ModuleInputAccessory)>,
+    pub items_replaced_in_cycle: bool,
 }
 
 impl ModuleRuntimeState {

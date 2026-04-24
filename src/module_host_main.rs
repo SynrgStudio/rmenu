@@ -5,7 +5,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use ipc::{
-    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcItem, IpcKeyEvent,
+    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem, IpcKeyEvent,
     ModuleInitPayload,
 };
 use serde::{Deserialize, Serialize};
@@ -55,6 +55,7 @@ enum WorkerRequest {
 struct WorkerResponse {
     ok: bool,
     items: Option<Vec<IpcItem>>,
+    actions: Option<Vec<IpcAction>>,
     error: Option<String>,
 }
 
@@ -345,7 +346,14 @@ fn run_hook(
         "decorateItems" => Some(HostResponsePayload::DecorateItemsResult {
             items: response.items.unwrap_or_default(),
         }),
-        _ => Some(HostResponsePayload::Ack),
+        _ => {
+            let actions = response.actions.unwrap_or_default();
+            if actions.is_empty() {
+                Some(HostResponsePayload::Ack)
+            } else {
+                Some(HostResponsePayload::Actions { actions })
+            }
+        }
     }
 }
 
@@ -366,8 +374,10 @@ let moduleInstance = null;
 let moduleConfig = null;
 
 function createCtx(configObj) {
+  const actions = [];
   const noop = () => {};
   return {
+    takeActions: () => actions.splice(0),
     query: () => '',
     items: () => [],
     selectedItem: () => null,
@@ -382,11 +392,24 @@ function createCtx(configObj) {
     submit: noop,
     close: noop,
     addItems: noop,
-    replaceItems: noop,
+    replaceItems: (items) => actions.push({
+      type: 'ReplaceItems',
+      data: { items: Array.isArray(items) ? items : [] }
+    }),
     registerCommand: noop,
     registerProvider: noop,
-    setInputAccessory: noop,
-    clearInputAccessory: noop,
+    setInputAccessory: (accessory) => {
+      if (!accessory || typeof accessory !== 'object') return;
+      actions.push({
+        type: 'SetInputAccessory',
+        data: {
+          text: typeof accessory.text === 'string' ? accessory.text : '',
+          kind: typeof accessory.kind === 'string' ? accessory.kind : null,
+          priority: Number.isInteger(accessory.priority) ? accessory.priority : null
+        }
+      });
+    },
+    clearInputAccessory: () => actions.push({ type: 'ClearInputAccessory' }),
     moduleConfig: () => configObj
   };
 }
@@ -421,17 +444,18 @@ async function handleMessage(raw) {
   }
 
   const ctx = createCtx(moduleConfig);
+  const okWithActions = (extra = {}) => ({ ok: true, actions: ctx.takeActions(), ...extra });
 
   switch (message.hook) {
     case 'onLoad':
       if (typeof moduleInstance.onLoad === 'function') await moduleInstance.onLoad(ctx);
-      return { ok: true };
+      return okWithActions();
     case 'onUnload':
       if (typeof moduleInstance.onUnload === 'function') await moduleInstance.onUnload(ctx);
-      return { ok: true };
+      return okWithActions();
     case 'onQueryChange':
       if (typeof moduleInstance.onQueryChange === 'function') await moduleInstance.onQueryChange(message.query || '', ctx);
-      return { ok: true };
+      return okWithActions();
     case 'onKey':
       if (typeof moduleInstance.onKey === 'function') {
         const keyEvent = message.key_event && typeof message.key_event === 'object' ? message.key_event : {};
@@ -443,24 +467,24 @@ async function handleMessage(raw) {
           meta: Boolean(keyEvent.meta)
         }, ctx);
       }
-      return { ok: true };
+      return okWithActions();
     case 'provideItems':
       if (typeof moduleInstance.provideItems === 'function') {
         const items = await moduleInstance.provideItems(message.query || '', ctx);
-        return { ok: true, items: Array.isArray(items) ? items : [] };
+        return okWithActions({ items: Array.isArray(items) ? items : [] });
       }
-      return { ok: true, items: [] };
+      return okWithActions({ items: [] });
     case 'decorateItems':
       if (typeof moduleInstance.decorateItems === 'function') {
         const items = await moduleInstance.decorateItems(Array.isArray(message.items) ? message.items : [], ctx);
-        return { ok: true, items: Array.isArray(items) ? items : [] };
+        return okWithActions({ items: Array.isArray(items) ? items : [] });
       }
-      return { ok: true, items: Array.isArray(message.items) ? message.items : [] };
+      return okWithActions({ items: Array.isArray(message.items) ? message.items : [] });
     case 'onCommand':
       if (typeof moduleInstance.onCommand === 'function') {
         await moduleInstance.onCommand(message.command || '', Array.isArray(message.args) ? message.args : [], ctx);
       }
-      return { ok: true };
+      return okWithActions();
     default:
       return { ok: false, error: 'unknown hook' };
   }

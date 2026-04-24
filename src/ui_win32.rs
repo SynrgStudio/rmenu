@@ -320,6 +320,10 @@ fn update_matching_items_from_config(app_state: &mut AppState) {
         let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
         if let Some(runtime) = runtime_guard.as_mut() {
             runtime.run_on_query_change(app_state);
+            if runtime.items_replaced_in_cycle() {
+                normalize_quick_select_items(app_state);
+                return;
+            }
             provider_items = runtime.collect_provider_items(app_state);
         }
     }

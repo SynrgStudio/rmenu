@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use host_client::{ExternalModuleHost, HostClientError};
-use ipc::{IpcItem, IpcKeyEvent};
+use ipc::{IpcAction, IpcInputAccessory, IpcItem, IpcKeyEvent};
 use loader::discover_module_descriptors;
 
 use crate::app_state::{AppState, LauncherItem, LauncherSource};
@@ -454,6 +454,7 @@ impl ModuleRuntime {
     }
 
     pub fn run_on_query_change(&mut self, app_state: &mut AppState) {
+        self.state.items_replaced_in_cycle = false;
         let query = app_state.current_input.clone();
 
         for module in &mut self.modules {
@@ -469,7 +470,17 @@ impl ModuleRuntime {
         for host in &mut self.external_hosts {
             let started = Instant::now();
             match host.on_query_change(&query) {
-                Ok(()) => telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None)),
+                Ok(actions) => {
+                    let mut shadow_state = app_state.clone();
+                    Self::apply_ipc_actions(
+                        &host.module_name,
+                        actions,
+                        &mut shadow_state,
+                        &mut self.state,
+                        self.host_capabilities.get(&host.module_name),
+                    );
+                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                }
                 Err(err) => {
                     let is_timeout = matches!(err, HostClientError::Timeout(_));
                     telemetry_events.push((
@@ -521,20 +532,21 @@ impl ModuleRuntime {
                 .map(|caps| caps.contains("keys"))
                 .unwrap_or(false);
             if !has_capability {
-                let message = format!(
-                    "permission_denied module='{}' operation='on_key' capability='keys'",
-                    host.module_name
-                );
-                if !app_state.silent_mode {
-                    eprintln!("{message}");
-                }
-                telemetry_events.push((host.module_name.clone(), 0, true, false, Some(message)));
                 continue;
             }
 
             let started = Instant::now();
             match host.on_key(module_key_event_to_ipc_key_event(event)) {
-                Ok(()) => telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None)),
+                Ok(actions) => {
+                    Self::apply_ipc_actions(
+                        &host.module_name,
+                        actions,
+                        app_state,
+                        &mut self.state,
+                        self.host_capabilities.get(&host.module_name),
+                    );
+                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                }
                 Err(err) => {
                     let is_timeout = matches!(err, HostClientError::Timeout(_));
                     telemetry_events.push((
@@ -607,14 +619,6 @@ impl ModuleRuntime {
                 .map(|caps| caps.contains("providers"))
                 .unwrap_or(false);
             if !has_capability {
-                let message = format!(
-                    "permission_denied module='{}' operation='provide_items' capability='providers'",
-                    host.module_name
-                );
-                if !app_state.silent_mode {
-                    eprintln!("{message}");
-                }
-                telemetry_events.push((host.module_name.clone(), 0, true, false, Some(message)));
                 continue;
             }
 
@@ -714,20 +718,21 @@ impl ModuleRuntime {
                 .map(|caps| caps.contains("commands"))
                 .unwrap_or(false);
             if !has_capability {
-                let message = format!(
-                    "permission_denied module='{}' operation='on_command' capability='commands'",
-                    host.module_name
-                );
-                if !silent_mode {
-                    eprintln!("{message}");
-                }
-                telemetry_events.push((host.module_name.clone(), 0, true, false, Some(message)));
                 continue;
             }
 
             let started = Instant::now();
             match host.on_command(&route.command, args) {
-                Ok(()) => telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None)),
+                Ok(actions) => {
+                    Self::apply_ipc_actions(
+                        &host.module_name,
+                        actions,
+                        app_state,
+                        &mut self.state,
+                        self.host_capabilities.get(&host.module_name),
+                    );
+                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                }
                 Err(err) => {
                     if !silent_mode {
                         eprintln!("module host command error '{}': {err:?}", host.module_name);
@@ -789,14 +794,6 @@ impl ModuleRuntime {
                 .map(|caps| caps.contains("decorate-items"))
                 .unwrap_or(false);
             if !has_capability {
-                let message = format!(
-                    "permission_denied module='{}' operation='decorate_items' capability='decorate-items'",
-                    host.module_name
-                );
-                if !app_state.silent_mode {
-                    eprintln!("{message}");
-                }
-                telemetry_events.push((host.module_name.clone(), 0, true, false, Some(message)));
                 continue;
             }
 
@@ -849,6 +846,10 @@ impl ModuleRuntime {
             .active_input_accessory
             .as_ref()
             .map(|(_, accessory)| accessory.clone())
+    }
+
+    pub fn items_replaced_in_cycle(&self) -> bool {
+        self.state.items_replaced_in_cycle
     }
 
     pub fn modules_debug_report(&self) -> String {
@@ -1178,6 +1179,37 @@ impl ModuleRuntime {
             host.shutdown();
         }
         self.external_hosts.clear();
+    }
+
+    fn apply_ipc_actions(
+        module_name: &str,
+        actions: Vec<IpcAction>,
+        app_state: &mut AppState,
+        state: &mut ModuleRuntimeState,
+        allowed_capabilities: Option<&BTreeSet<String>>,
+    ) {
+        if actions.is_empty() {
+            return;
+        }
+
+        let snapshot = snapshot_from_app_state(app_state);
+        let mut ctx = ModuleCtx::new(module_name.to_string(), snapshot);
+        for action in actions {
+            match action {
+                IpcAction::SetInputAccessory(accessory) => {
+                    ctx.set_input_accessory(module_input_accessory_from_ipc(accessory));
+                }
+                IpcAction::ClearInputAccessory => ctx.clear_input_accessory(),
+                IpcAction::ReplaceItems { items } => {
+                    let sanitized = sanitize_ipc_items(items, module_name, app_state.silent_mode)
+                        .into_iter()
+                        .map(module_item_from_ipc_item)
+                        .collect();
+                    ctx.replace_items(sanitized);
+                }
+            }
+        }
+        Self::apply_ctx_requests(module_name, &mut ctx, app_state, state, allowed_capabilities);
     }
 
     fn apply_ctx_requests(
@@ -1619,16 +1651,26 @@ fn launcher_item_from_module_item(item: ModuleItem) -> LauncherItem {
     launcher_item
 }
 
-pub fn input_accessory_text(accessory: &ModuleInputAccessory) -> String {
-    let kind = match accessory.kind {
-        InputAccessoryKind::Info => "info",
-        InputAccessoryKind::Success => "success",
-        InputAccessoryKind::Warning => "warning",
-        InputAccessoryKind::Error => "error",
-        InputAccessoryKind::Hint => "hint",
-    };
+fn module_input_accessory_from_ipc(accessory: IpcInputAccessory) -> ModuleInputAccessory {
+    ModuleInputAccessory {
+        text: sanitize_single_line_string(accessory.text, IPC_ITEM_MAX_HINT_LEN),
+        kind: input_accessory_kind_from_str(accessory.kind.as_deref()),
+        priority: accessory.priority.unwrap_or(0),
+    }
+}
 
-    format!("[{}] {}", kind, accessory.text)
+fn input_accessory_kind_from_str(kind: Option<&str>) -> InputAccessoryKind {
+    match kind.unwrap_or("hint").trim().to_ascii_lowercase().as_str() {
+        "info" => InputAccessoryKind::Info,
+        "success" => InputAccessoryKind::Success,
+        "warning" => InputAccessoryKind::Warning,
+        "error" => InputAccessoryKind::Error,
+        _ => InputAccessoryKind::Hint,
+    }
+}
+
+pub fn input_accessory_text(accessory: &ModuleInputAccessory) -> String {
+    accessory.text.clone()
 }
 
 pub fn quick_select_badge_text(capabilities: &ModuleItemCapabilities, decorations: &ModuleItemDecorations) -> Option<String> {
@@ -1726,7 +1768,7 @@ mod tests {
         IPC_ITEM_MAX_TITLE_LEN,
     };
     use crate::app_state::{LauncherItem, LauncherSource};
-    use crate::modules::ipc::IpcItem;
+    use crate::modules::ipc::{IpcInputAccessory, IpcItem};
     use crate::modules::types::{
         BadgeKind, InputAccessoryKind, ModuleCommandDef, ModuleInputAccessory, ModuleItemCapabilities,
         ModuleItemDecorations,
@@ -2063,12 +2105,25 @@ mod tests {
     }
 
     #[test]
-    fn input_accessory_text_includes_kind_prefix() {
+    fn input_accessory_text_omits_kind_prefix() {
         let text = super::input_accessory_text(&ModuleInputAccessory {
             text: "ready".to_string(),
             kind: InputAccessoryKind::Success,
             priority: 1,
         });
-        assert_eq!(text, "[success] ready");
+        assert_eq!(text, "ready");
+    }
+
+    #[test]
+    fn ipc_input_accessory_maps_kind_and_priority() {
+        let accessory = super::module_input_accessory_from_ipc(IpcInputAccessory {
+            text: "=4".to_string(),
+            kind: Some("success".to_string()),
+            priority: Some(100),
+        });
+
+        assert_eq!(accessory.text, "=4");
+        assert_eq!(accessory.kind, InputAccessoryKind::Success);
+        assert_eq!(accessory.priority, 100);
     }
 }

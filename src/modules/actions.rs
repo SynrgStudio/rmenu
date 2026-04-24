@@ -78,6 +78,7 @@ pub fn apply_action_request(
         }
         ModuleActionRequest::ReplaceItems(items) => {
             let replaced = items.len();
+            state.items_replaced_in_cycle = true;
             view.items = items;
             if view.items.is_empty() {
                 view.selected_index = 0;

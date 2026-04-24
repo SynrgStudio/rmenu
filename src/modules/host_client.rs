@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::ipc::{
-    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcItem, IpcKeyEvent,
+    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem, IpcKeyEvent,
     ModuleInitPayload,
 };
 use super::types::ModuleDescriptor;
@@ -101,26 +101,17 @@ impl ExternalModuleHost {
         Ok(host)
     }
 
-    pub fn on_query_change(&mut self, query: &str) -> Result<(), HostClientError> {
-        match self.send_request(HostRequestPayload::OnQueryChange {
-            query: query.to_string(),
-        })? {
-            HostResponsePayload::Ack => Ok(()),
-            HostResponsePayload::Error { message, .. } => Err(HostClientError::Protocol(message)),
-            other => Err(HostClientError::Protocol(format!(
-                "unexpected response for OnQueryChange: {other:?}"
-            ))),
-        }
+    pub fn on_query_change(&mut self, query: &str) -> Result<Vec<IpcAction>, HostClientError> {
+        actions_from_response(
+            self.send_request(HostRequestPayload::OnQueryChange {
+                query: query.to_string(),
+            })?,
+            "OnQueryChange",
+        )
     }
 
-    pub fn on_key(&mut self, event: IpcKeyEvent) -> Result<(), HostClientError> {
-        match self.send_request(HostRequestPayload::OnKey { event })? {
-            HostResponsePayload::Ack => Ok(()),
-            HostResponsePayload::Error { message, .. } => Err(HostClientError::Protocol(message)),
-            other => Err(HostClientError::Protocol(format!(
-                "unexpected response for OnKey: {other:?}"
-            ))),
-        }
+    pub fn on_key(&mut self, event: IpcKeyEvent) -> Result<Vec<IpcAction>, HostClientError> {
+        actions_from_response(self.send_request(HostRequestPayload::OnKey { event })?, "OnKey")
     }
 
     pub fn provide_items(&mut self, query: &str) -> Result<Vec<IpcItem>, HostClientError> {
@@ -145,17 +136,14 @@ impl ExternalModuleHost {
         }
     }
 
-    pub fn on_command(&mut self, command: &str, args: &[String]) -> Result<(), HostClientError> {
-        match self.send_request(HostRequestPayload::OnCommand {
-            command: command.to_string(),
-            args: args.to_vec(),
-        })? {
-            HostResponsePayload::Ack => Ok(()),
-            HostResponsePayload::Error { message, .. } => Err(HostClientError::Protocol(message)),
-            other => Err(HostClientError::Protocol(format!(
-                "unexpected response for OnCommand: {other:?}"
-            ))),
-        }
+    pub fn on_command(&mut self, command: &str, args: &[String]) -> Result<Vec<IpcAction>, HostClientError> {
+        actions_from_response(
+            self.send_request(HostRequestPayload::OnCommand {
+                command: command.to_string(),
+                args: args.to_vec(),
+            })?,
+            "OnCommand",
+        )
     }
 
     pub fn shutdown(&mut self) {
@@ -212,6 +200,20 @@ impl ExternalModuleHost {
     fn force_kill(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+fn actions_from_response(
+    payload: HostResponsePayload,
+    operation: &str,
+) -> Result<Vec<IpcAction>, HostClientError> {
+    match payload {
+        HostResponsePayload::Ack => Ok(Vec::new()),
+        HostResponsePayload::Actions { actions } => Ok(actions),
+        HostResponsePayload::Error { message, .. } => Err(HostClientError::Protocol(message)),
+        other => Err(HostClientError::Protocol(format!(
+            "unexpected response for {operation}: {other:?}"
+        ))),
     }
 }
 
