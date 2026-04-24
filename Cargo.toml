@@ -2,8 +2,9 @@
 name = "rmenu"
 version = "0.2.0"
 edition = "2021"
-description = "Un clon de dmenu para Windows, escrito en Rust"
-authors = ["Tu Nombre <tu.email@ejemplo.com>"]
+description = "Lightweight Windows launcher and modular command surface"
+authors = ["SynrgStudio"]
+license = "MIT"
 
 # Incluir archivos adicionales en el paquete
 include = [
@@ -11,6 +12,9 @@ include = [
     "Cargo.toml",
     "config_example.ini",
     "README.md",
+    "LICENSE",
+    "MODULES_*.md",
+    "*_SPEC_V1.md",
 ]
 
 [dependencies]

@@ -18,13 +18,16 @@ Lightweight Windows launcher inspired by `dmenu`, built in Rust.
 - Still searchable by technical executable names (`mspaint`, `powershell`, etc.).
 - Native Windows launch path via `ShellExecuteW` with controlled fallback.
 - JSON index cache with environment signature (auto-invalidation on PATH/Start Menu changes).
-- Built-in diagnostics for ranking and performance (`--debug-ranking`, `--metrics`, `--reindex`).
+- Modular runtime for external providers, commands, decorators and input accessories.
+- Built-in diagnostics for ranking, performance and modules (`--debug-ranking`, `--metrics`, `--modules-debug`, `--reindex`).
 
 ---
 
 ## Current project status
 
-`rmenu` is actively evolving and the core launcher pipeline is implemented and stable:
+`rmenu` is a native Windows launcher and modular command surface.
+
+The launcher core is implemented and stable:
 
 - Win32 UI extracted into `src/ui_win32.rs`
 - Ranking engine in `src/ranking.rs` + `src/fuzzy.rs`
@@ -33,9 +36,18 @@ Lightweight Windows launcher inspired by `dmenu`, built in Rust.
 - History persistence + source boosts + blacklist controls
 - Unicode UI rendering (`TextOutW`)
 
-For a detailed implementation snapshot, see:
+The modular core is defined around:
 
-- `IMPLEMENTATION_PLAN.md` (section: **ESTADO DE PRODUCCIÓN ACTUAL**)
+- `.rmod` single-file modules and directory modules with `module.toml`
+- external module host process
+- IPC boundaries
+- capabilities enforcement
+- provider budgets/timeouts
+- command namespacing
+- decorations, quick-select and input accessory primitives
+- module diagnostics via `--modules-debug`
+
+Architecture and public contracts live in the root specs, starting with `MODULES_ARCHITECTURE.md`.
 
 ---
 
@@ -102,6 +114,7 @@ Configuration and Behavior Options:
   -s, --silent            Suppress all error/diagnostic messages (stderr).
   --debug-ranking <QUERY> Print ranking breakdown (fuzzy + source boost) and exit.
   --metrics               Print startup/UI/search/dataset metrics and exit.
+  --modules-debug         Print module descriptors/hosts/telemetry and exit.
   --reindex               Force index rebuild (ignore cache for this run).
   -h, --help              Show this help.
 
@@ -161,6 +174,52 @@ rmenu.exe --reindex
 
 ---
 
+## Modules
+
+`rmenu` supports external modules in two formats:
+
+1. `modules/<name>.rmod` — single-file text module, recommended for distribution.
+2. `modules/<name>/module.toml` + JS entry — directory module, recommended for development.
+
+Modules can contribute:
+
+- providers,
+- commands,
+- item decorations,
+- quick-select keys,
+- input accessories,
+- controlled key hooks.
+
+The core remains authoritative over UI, ranking, dedupe, state, execution policy and error isolation.
+
+Quick commands:
+
+```powershell
+rmenu.exe --modules-debug
+```
+
+Runtime commands inside `rmenu`:
+
+```text
+/modules.reload
+/modules.list
+/modules.telemetry.reset
+```
+
+Module documentation:
+
+- `MODULES_ARCHITECTURE.md` — core/module boundary and freeze policy.
+- `MODULES_QUICKSTART.md` — install, develop and debug modules quickly.
+- `MODULES_API_SPEC_V1.md` — hooks, ctx, items and restrictions.
+- `RMOD_SPEC_V1.md` — `.rmod` single-file format.
+- `MANIFEST_SPEC_V1.md` — `module.toml` directory format.
+- `MODULES_CAPABILITIES_MATRIX.md` — permissions and enforcement.
+- `MODULES_AUTHORING_GUIDE.md` — module authoring guide.
+- `MODULES_OPERATIONS_GUIDE.md` — operations/debugging guide.
+- `DECISIONS.md` — accepted architecture decisions.
+
+---
+
 ## Diagnostics and performance
 
 ### Ranking debug
@@ -186,6 +245,22 @@ Output includes:
 - `dataset_estimated_bytes`
 - `index_cache_bytes`
 
+### Modules debug
+
+```powershell
+rmenu.exe --modules-debug
+```
+
+Output includes:
+
+- API version
+- loaded modules
+- external descriptors
+- running hosts
+- host status
+- request/error/timeout/restart counters
+- recent host errors
+
 ### Reproducible benchmark routine
 
 ```powershell
@@ -204,7 +279,7 @@ cargo build --release
 
 - Unified audit artifacts: `artifacts/audits/`
 - Archived codebase snapshot: `docs/audits/codebase-report-2026-04-22.md`
-- Historical pointer: `codebase-report.md`
+- Historical/private planning docs: `docs/historico/private-docs/`
 
 ### Latest audit (current repository snapshot)
 
@@ -234,6 +309,8 @@ Optional args:
 - `src/sources/mod.rs` - history/start-menu/path indexing + cache
 - `src/launcher.rs` - target launch backend
 - `src/settings.rs` - config + CLI parsing
+- `src/modules/` - module runtime, descriptors, IPC, host client, policies and types
+- `src/module_host_main.rs` - external module host process
 
 ---
 
