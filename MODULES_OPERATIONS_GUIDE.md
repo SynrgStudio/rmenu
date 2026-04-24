@@ -122,7 +122,33 @@ Reglas:
 
 ---
 
-## 8. Errores comunes
+## 8. Validación manual: calculator
+
+El módulo `modules/calculator.rmod` valida el flujo completo de actions desde host externo hacia core.
+
+Prueba manual:
+
+1. Ejecutar `rmenu`.
+2. Escribir:
+
+```text
+2+2
+```
+
+Resultado esperado:
+
+- la barra muestra `=4` alineado a la derecha;
+- el texto aparece con color de `InputAccessoryKind::Success`;
+- la lista inferior no muestra resultados fuzzy mientras el cálculo sea válido;
+- no se imprimen mensajes `permission_denied` por hooks no declarados.
+
+Si aparecen resultados fuzzy durante el cálculo, revisar que el módulo esté usando `ctx.replaceItems([])` y que el core respete `items_replaced_in_cycle`.
+
+Si aparece `[success] =4`, revisar que `input_accessory_text()` renderice solo `accessory.text`.
+
+---
+
+## 9. Errores comunes
 
 ### `RMOD_E_INVALID_MAGIC`
 
@@ -160,7 +186,7 @@ El módulo superó umbral de errores/timeouts consecutivos.
 
 ---
 
-## 9. Flujo recomendado de diagnóstico
+## 10. Flujo recomendado de diagnóstico
 
 1. Ejecutar:
 

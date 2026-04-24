@@ -125,14 +125,34 @@ Objetivo: demostrar que el core actual alcanza para construir extensiones útile
 
 ## 2.1 Módulo real: calculator
 
-- [ ] Crear módulo calculator como `.rmod` o carpeta dev.
-- [ ] Detectar queries tipo `=2+2` o similar.
-- [ ] Mostrar resultado vía `Input Accessory`.
-- [ ] Aportar item de resultado vía `Provider` si corresponde.
-- [ ] Ejecutar acción de copiar/usar resultado mediante action oficial.
-- [ ] Declarar capabilities mínimas necesarias.
-- [ ] Confirmar que no requiere cambios al core.
-- [ ] Documentar fricciones encontradas.
+Estado: validado manualmente.
+
+Implementación:
+
+- Archivo: `modules/calculator.rmod`.
+- Detecta cálculos simples escritos directamente, sin prefijo obligatorio (`2+2`, `(2+3)*4`, `10/2`).
+- Muestra el resultado como `=<resultado>` en la misma barra de input mediante `InputAccessory` `success`.
+- No agrega resultados a la lista inferior; cuando hay cálculo válido, reemplaza los items visibles con lista vacía mediante `ctx.replaceItems([])`.
+- Declara capability mínima: `input-accessory`.
+- No usa `providers`, `keys`, `commands` ni `decorate-items`.
+
+Fricciones encontradas y resueltas:
+
+- El host externo exponía `ctx.setInputAccessory`/`ctx.clearInputAccessory` como no-op. Se habilitó devolución de actions desde `.rmod` al core.
+- El accessory se renderizaba con prefijo de kind (`[success] =4`). Se cambió para renderizar solo el texto, manteniendo el color por kind.
+- El runtime registraba `permission_denied` para hooks no declarados. Se cambió a no invocar hooks externos sin capability.
+- El fuzzy/ranking seguía actualizando la lista inferior durante cálculos. Se habilitó `ctx.replaceItems([])` desde módulos externos y el ciclo de UI respeta ese reemplazo.
+
+Checklist:
+
+- [x] Crear módulo calculator como `.rmod` o carpeta dev.
+- [x] Detectar queries tipo cálculo simple sin prefijo obligatorio.
+- [x] Mostrar resultado vía `Input Accessory`.
+- [x] Aportar item de resultado vía `Provider` si corresponde. No corresponde para UX actual; el resultado vive en la barra.
+- [ ] Ejecutar acción de copiar/usar resultado mediante action oficial. Pendiente para una iteración futura si se define UX de submit/copiar.
+- [x] Declarar capabilities mínimas necesarias.
+- [x] Confirmar que no requiere lógica específica de calculator en el core.
+- [x] Documentar fricciones encontradas.
 
 ## 2.2 Módulo real: scripts/commands
 

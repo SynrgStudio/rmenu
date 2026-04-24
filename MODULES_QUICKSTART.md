@@ -131,7 +131,28 @@ rmenu.exe --modules-debug
 
 ---
 
-## 6. Errores comunes
+## 6. Módulo incluido: calculator
+
+`rmenu` incluye un módulo real de validación:
+
+```text
+modules/calculator.rmod
+```
+
+Comportamiento:
+
+- reconoce cálculos simples escritos directamente en el input, por ejemplo `2+2`, `10/2`, `(2+3)*4`;
+- no requiere prefijo `=`;
+- muestra el resultado en la misma barra, alineado a la derecha, como `=4`;
+- usa `InputAccessory` con kind `success`, por lo que el core decide el color;
+- reemplaza la lista inferior con `ctx.replaceItems([])` mientras el cálculo sea válido, para evitar resultados fuzzy irrelevantes;
+- declara solo `input-accessory` como capability.
+
+El core no contiene lógica de calculadora. Solo expone actions genéricas (`setInputAccessory`, `clearInputAccessory`, `replaceItems`) que el `.rmod` usa.
+
+---
+
+## 7. Errores comunes
 
 ### `RMOD_E_INVALID_MAGIC`
 
@@ -174,7 +195,7 @@ Solución:
 
 ---
 
-## 7. Capabilities rápidas
+## 8. Capabilities rápidas
 
 | Quiero hacer | Capability |
 |---|---|
@@ -188,7 +209,7 @@ Declarar solo lo necesario.
 
 ---
 
-## 8. Contratos relacionados
+## 9. Contratos relacionados
 
 Leer en este orden:
 
