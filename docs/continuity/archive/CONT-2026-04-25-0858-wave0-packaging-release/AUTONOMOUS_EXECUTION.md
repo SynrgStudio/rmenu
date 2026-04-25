@@ -1,16 +1,14 @@
 ---
-continuity_session: none
+continuity_session: CONT-2026-04-25-0858-wave0-packaging-release
 created_at: 2026-04-25 08:58
-updated_at: 2026-04-25 10:40
-status: idle
-goal: none
-last_archived_session: CONT-2026-04-25-0858-wave0-packaging-release
-archive_path: docs/continuity/archive/CONT-2026-04-25-0858-wave0-packaging-release/
+updated_at: 2026-04-25 08:58
+status: active
+goal: Preparar Wave 0 Packaging/release para rmenu post-freeze
 ---
 
 # AUTONOMOUS_EXECUTION.md — rmenu
 
-Status: idle autonomous execution contract  
+Status: active autonomous execution contract  
 Project: `rmenu`  
 Primary use: make Wave 0 packaging/release work continuable across chat sessions.
 
@@ -20,19 +18,9 @@ Primary use: make Wave 0 packaging/release work continuable across chat sessions
 
 This file defines how an agent should execute the active continuable session for `rmenu`.
 
-Active goal: none.
+Active goal:
 
-Last archived session:
-
-```text
-CONT-2026-04-25-0858-wave0-packaging-release
-```
-
-Archive path:
-
-```text
-docs/continuity/archive/CONT-2026-04-25-0858-wave0-packaging-release/
-```
+> Preparar Wave 0 Packaging/release para rmenu post-freeze: release checklist, GitHub release workflow, install/update documentation, binary signing research, changelog/release notes, and packaging policy after Core Closed v1.
 
 The goal is to keep work moving until a real Definition of Done or a real stop condition is reached, while preserving safety, project rules, and restartability between sessions.
 

@@ -55,11 +55,19 @@ Architecture and public contracts live in the root specs, starting with `MODULES
 
 ### From releases
 
-Download the latest `rmenu.exe` from:
+Download the latest Windows x64 zip from:
 
 - <https://github.com/SynrgStudio/rmenu/releases>
 
-Place it in a folder on your PATH.
+See `INSTALL.md` for zip install, PATH setup, checksum verification, and manual update instructions.
+
+Release docs:
+
+- `scripts/release-local.ps1` — interactive one-command maintainer release script.
+- `INSTALL.md` — install/update instructions.
+- `CHANGELOG.md` — release notes.
+- `RELEASE_CHECKLIST.md` — maintainer release process.
+- `docs/release/BINARY_SIGNING.md` — current signing/checksum policy.
 
 ### Build from source
 
@@ -228,6 +236,11 @@ Module documentation:
 - `MODULES_AUTHORING_GUIDE.md` — module authoring guide.
 - `MODULES_OPERATIONS_GUIDE.md` — operations/debugging guide.
 - `DECISIONS.md` — accepted architecture decisions.
+- `POST_FREEZE_ROADMAP.md` — post-freeze module/product roadmap.
+- `RELEASE_CHECKLIST.md` — maintainer release checklist and artifact spec.
+- `INSTALL.md` — zip install and manual update guide.
+- `CHANGELOG.md` — release notes.
+- `docs/release/BINARY_SIGNING.md` — binary signing and checksum policy.
 
 ---
 

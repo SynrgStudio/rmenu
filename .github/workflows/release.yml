@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    name: Windows x64 release artifact
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Test
+        run: cargo test
+
+      - name: Check
+        run: cargo check
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Compute package metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $versionLine = Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $versionLine) { throw "Could not find package version in Cargo.toml" }
+          $version = $versionLine.Matches[0].Groups[1].Value
+          $packageName = "rmenu-v$version-windows-x64"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "package_name=$packageName" >> $env:GITHUB_OUTPUT
+
+      - name: Stage release package
+        shell: pwsh
+        run: |
+          $packageName = "${{ steps.meta.outputs.package_name }}"
+          $stage = Join-Path "dist" $packageName
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $stage "module-examples") | Out-Null
+
+          Copy-Item "target\release\rmenu.exe" $stage
+          Copy-Item "target\release\rmenu-module-host.exe" $stage
+          Copy-Item "config_example.ini" $stage
+
+          $docs = @(
+            "README.md",
+            "INSTALL.md",
+            "CHANGELOG.md",
+            "CORE_FREEZE_V1.md",
+            "MODULES_QUICKSTART.md",
+            "MODULES_AUTHORING_GUIDE.md",
+            "MODULES_OPERATIONS_GUIDE.md",
+            "MODULES_API_SPEC_V1.md",
+            "RMOD_SPEC_V1.md",
+            "MANIFEST_SPEC_V1.md",
+            "CTX_ACTIONS_SPEC_V1.md",
+            "PROVIDER_EXECUTION_POLICY.md",
+            "ERROR_ISOLATION_POLICY.md",
+            "MODULES_CAPABILITIES_MATRIX.md"
+          )
+
+          foreach ($doc in $docs) {
+            if (Test-Path $doc) {
+              Copy-Item $doc $stage
+            }
+          }
+
+          if (Test-Path "modules\calculator.rmod") {
+            Copy-Item "modules\calculator.rmod" (Join-Path $stage "module-examples\calculator.rmod")
+          }
+          if (Test-Path "modules\local-scripts.rmod") {
+            Copy-Item "modules\local-scripts.rmod" (Join-Path $stage "module-examples\local-scripts.rmod")
+          }
+          if (Test-Path "modules\examples\shortcuts.example.rmod") {
+            Copy-Item "modules\examples\shortcuts.example.rmod" (Join-Path $stage "module-examples\shortcuts.example.rmod")
+          }
+
+          # Do not copy modules/shortcuts.rmod as an active default module; it may contain local user paths.
+          # Module examples are packaged under module-examples/ and must be copied into modules/ by the user.
+
+      - name: Generate package checksums
+        shell: pwsh
+        run: |
+          $packageName = "${{ steps.meta.outputs.package_name }}"
+          $stage = Join-Path "dist" $packageName
+          $checksumPath = Join-Path $stage "checksums.txt"
+          Get-ChildItem $stage -File -Recurse |
+            Where-Object { $_.Name -ne "checksums.txt" } |
+            Sort-Object FullName |
+            ForEach-Object {
+              $hash = Get-FileHash $_.FullName -Algorithm SHA256
+              $relative = Resolve-Path -Relative $_.FullName
+              "$($hash.Hash)  $relative"
+            } | Set-Content -Path $checksumPath -Encoding utf8
+
+      - name: Create zip artifact
+        shell: pwsh
+        run: |
+          $packageName = "${{ steps.meta.outputs.package_name }}"
+          $zipPath = Join-Path "dist" "$packageName.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath }
+          Compress-Archive -Path (Join-Path "dist" $packageName) -DestinationPath $zipPath
+
+      - name: Generate release checksums
+        shell: pwsh
+        run: |
+          $packageName = "${{ steps.meta.outputs.package_name }}"
+          $zipPath = Join-Path "dist" "$packageName.zip"
+          $hash = Get-FileHash $zipPath -Algorithm SHA256
+          "$($hash.Hash)  $packageName.zip" | Set-Content -Path (Join-Path "dist" "SHA256SUMS.txt") -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.package_name }}
+          path: |
+            dist/${{ steps.meta.outputs.package_name }}.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/${{ steps.meta.outputs.package_name }}.zip
+            dist/SHA256SUMS.txt
+          generate_release_notes: true

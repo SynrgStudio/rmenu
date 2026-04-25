@@ -1,11 +1,9 @@
 ---
-continuity_session: none
+continuity_session: CONT-2026-04-25-0858-wave0-packaging-release
 created_at: 2026-04-25 08:58
-updated_at: 2026-04-25 10:40
-status: idle
-goal: none
-last_archived_session: CONT-2026-04-25-0858-wave0-packaging-release
-archive_path: docs/continuity/archive/CONT-2026-04-25-0858-wave0-packaging-release/
+updated_at: 2026-04-25 09:04
+status: active
+goal: Preparar Wave 0 Packaging/release para rmenu post-freeze
 ---
 
 # STATE — rmenu
@@ -15,28 +13,30 @@ Branch: `main`
 
 ---
 
-## Continuity session status
-
-No active continuity session.
-
-Last archived session:
+## Active continuity session
 
 ```text
 continuity_session: CONT-2026-04-25-0858-wave0-packaging-release
-archive_path: docs/continuity/archive/CONT-2026-04-25-0858-wave0-packaging-release/
-commit_message: docs/continuity/archive/CONT-2026-04-25-0858-wave0-packaging-release/COMMIT_MESSAGE.txt
+status: active
+goal: Preparar Wave 0 Packaging/release para rmenu post-freeze
 ```
 
-Final continuity checkpoint:
+Managed files:
 
-- Wave 0 packaging/release archived.
+```text
+AUTONOMOUS_EXECUTION.md
+ACTIVE_QUEUE.md
+STATE.md
+```
+
+Current continuity checkpoint:
+
+- Wave 0 packaging/release completed.
 - Created release checklist, install/update docs, binary signing research, changelog, safe shortcut example packaging, and GitHub Actions release workflow.
-- Added `scripts/release-local.ps1` as the preferred interactive one-command maintainer release flow.
 - Updated README, roadmap, package include metadata, and active queue.
 - Final local validation passed: `cargo fmt`, `cargo test`, `cargo check`, `cargo build --release`.
-- Release script package-only validation passed with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/release-local.ps1 -Version 0.2.0 -PackageOnly -SkipValidation`.
-- Remaining external validation: use the release script to create a real GitHub Release, or run the GitHub Actions workflow on GitHub.
-- Suggested commit message is archived in `COMMIT_MESSAGE.txt`.
+- Remaining external validation: run the GitHub Actions workflow on GitHub after pushing the workflow and/or creating a `v*` tag.
+- Next recommended step: `/fin-cont`.
 
 ---
 

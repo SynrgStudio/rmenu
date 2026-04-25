@@ -1,0 +1,19 @@
+chore(release): add Wave 0 packaging workflow
+
+Prepare post-freeze release infrastructure for rmenu Core Closed v1.
+
+- Add release checklist with artifact layout, smoke checks, checksums, and GitHub-only validation notes
+- Add install/update documentation for unsigned Windows zip releases
+- Document binary signing and SmartScreen tradeoffs
+- Add changelog baseline for v0.2.0/Core Closed v1
+- Add safe shortcuts example module for release packaging
+- Add Windows GitHub Actions release workflow with zip artifacts and SHA256 checksums
+- Add interactive local release script for one-command maintainer publishing
+- Link release docs from README and update post-freeze roadmap/state
+- Include release docs and module examples in package metadata
+
+Validation:
+- cargo fmt
+- cargo test
+- cargo check
+- cargo build --release

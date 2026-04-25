@@ -1,6 +1,6 @@
 [package]
 name = "rmenu"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Lightweight Windows launcher and modular command surface"
 authors = ["SynrgStudio"]
@@ -12,6 +12,10 @@ include = [
     "Cargo.toml",
     "config_example.ini",
     "README.md",
+    "INSTALL.md",
+    "CHANGELOG.md",
+    "RELEASE_CHECKLIST.md",
+    "POST_FREEZE_ROADMAP.md",
     "LICENSE",
     "CORE_FREEZE_V1.md",
     "DECISIONS.md",
@@ -19,6 +23,9 @@ include = [
     "PROVIDER_EXECUTION_POLICY.md",
     "MODULES_*.md",
     "*_SPEC_V1.md",
+    "docs/release/*.md",
+    "modules/examples/*.rmod",
+    "scripts/*.ps1",
 ]
 
 [dependencies]
