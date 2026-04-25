@@ -13,6 +13,10 @@ include = [
     "config_example.ini",
     "README.md",
     "LICENSE",
+    "CORE_FREEZE_V1.md",
+    "DECISIONS.md",
+    "ERROR_ISOLATION_POLICY.md",
+    "PROVIDER_EXECUTION_POLICY.md",
     "MODULES_*.md",
     "*_SPEC_V1.md",
 ]

@@ -47,7 +47,7 @@ The modular core is defined around:
 - decorations, quick-select and input accessory primitives
 - module diagnostics via `--modules-debug`
 
-Architecture and public contracts live in the root specs, starting with `MODULES_ARCHITECTURE.md`.
+Architecture and public contracts live in the root specs, starting with `MODULES_ARCHITECTURE.md`. The formal v1 freeze declaration lives in `CORE_FREEZE_V1.md`.
 
 ---
 
@@ -218,6 +218,7 @@ Runtime commands inside `rmenu`:
 
 Module documentation:
 
+- `CORE_FREEZE_V1.md` — formal core v1 freeze declaration.
 - `MODULES_ARCHITECTURE.md` — core/module boundary and freeze policy.
 - `MODULES_QUICKSTART.md` — install, develop and debug modules quickly.
 - `MODULES_API_SPEC_V1.md` — hooks, ctx, items and restrictions.

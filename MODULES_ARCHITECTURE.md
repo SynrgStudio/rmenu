@@ -2,7 +2,8 @@
 
 Status: Frozen v1  
 Date: 2026-04-24  
-Scope: public architecture of the modular `rmenu` core.
+Scope: public architecture of the modular `rmenu` core.  
+Formal freeze declaration: `CORE_FREEZE_V1.md`.
 
 ---
 
@@ -207,6 +208,7 @@ A module can only operate through:
 
 The public v1 contracts are defined in:
 
+- `CORE_FREEZE_V1.md`
 - `MODULES_API_SPEC_V1.md`
 - `RMOD_SPEC_V1.md`
 - `MANIFEST_SPEC_V1.md`
@@ -372,6 +374,8 @@ The core can be considered closed when:
 ---
 
 ## 17. Final declaration
+
+The formal freeze declaration is recorded in `CORE_FREEZE_V1.md`.
 
 The core must not grow by feature accumulation.
 

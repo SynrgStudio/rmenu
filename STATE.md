@@ -7,7 +7,7 @@ Branch: `main`
 
 ## Executive summary
 
-`rmenu` has a working launcher core and three real modules validated:
+`rmenu` core v1 is formally closed/frozen as of 2026-04-24. It has a working launcher core and three real modules validated:
 
 - `calculator.rmod`
 - `local-scripts.rmod`
@@ -42,7 +42,7 @@ cargo run --bin rmenu -- --modules-debug
 Current test result:
 
 ```text
-72 tests passed
+74 tests passed
 0 failed
 ```
 
@@ -79,6 +79,16 @@ cargo check
 ```
 
 Results: new settings tests passed; full tests now 74 total, 0 failed; `cargo check` passed.
+
+Latest Phase 6 freeze validation:
+
+```bash
+cargo fmt
+cargo test
+cargo check
+```
+
+Results: full tests remain 74 total, 0 failed; `cargo check` passed.
 
 Observed issue: running `cargo run --bin rmenu -- --reindex` rebuilt/started the launcher path but later printed `module 'shortcuts' disabled after repeated failures`; closing with Esc returned exit code 1. Esc-as-cancel may explain the Cargo nonzero report. Follow-up diagnostics showed a clean `--modules-debug` state for `shortcuts` and `cargo run --bin rmenu -- --reindex --metrics` completed successfully in the user's PowerShell session with startup_prepare_ms 567, time_to_window_visible_ms 30, time_to_input_ready_ms 36, and search_p95_ms 4.271. Treat the auto-disable message as a transient observation to monitor, not an active freeze blocker unless it recurs.
 
@@ -219,6 +229,7 @@ Key decision: shortcuts v1 are exact search aliases, not global hotkeys. Binding
 Root specs/guides:
 
 ```text
+CORE_FREEZE_V1.md
 MODULES_ARCHITECTURE.md
 MODULES_API_SPEC_V1.md
 RMOD_SPEC_V1.md
@@ -402,17 +413,25 @@ Completed/updated:
 
 ### Phase 6 — Freeze declaration
 
-Do not start yet.
+Status: complete.
 
-Blockers:
+Completed:
 
-- none from Phase 4/5. Phase 6 freeze preparation may start.
+- created `CORE_FREEZE_V1.md`;
+- declared freeze date: 2026-04-24;
+- declared frozen core scope;
+- declared frozen module API v1;
+- declared frozen `.rmod` and directory manifest formats;
+- declared allowed and rejected post-freeze core changes;
+- declared that new features must be implemented as modules first;
+- linked freeze declaration from `README.md` and `MODULES_ARCHITECTURE.md`;
+- updated package include metadata so the freeze declaration and policy docs are packaged.
 
 ---
 
 ## Recommended next step
 
-Phase 4 and Phase 5 are complete. Next step: start Phase 6 freeze declaration preparation.
+Core Closed v1 is complete. Future work should move to modules, examples, templates, docs, bug fixes, performance, Windows compatibility, and controlled API evolution through documented decisions.
 
 ---
 
@@ -425,7 +444,7 @@ cargo check
 cargo test
 ```
 
-Latest result: 72 passed, 0 failed.
+Latest result: 74 passed, 0 failed.
 
 Release build:
 

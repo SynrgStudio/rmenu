@@ -1,6 +1,6 @@
 # CORE CLOSURE CHECKLIST — rmenu
 
-Status: Operational draft  
+Status: core closed v1  
 Goal: close the `rmenu` core as a stable platform and move future feature work to modules.
 
 ---
@@ -295,34 +295,34 @@ Completed:
 
 # Phase 6 — Freeze declaration
 
-Do not start yet.
+Status: complete.
 
 Blockers:
 
-- none from Phase 4/5. Phase 6 freeze preparation may start.
+- none.
 
 ## Final checklist before freeze
 
-- [ ] `MODULES_ARCHITECTURE.md` exists and is approved.
-- [ ] v1 specs are reviewed and frozen.
-- [ ] README reflects current architecture.
-- [ ] Duplicate/historical docs are ordered.
-- [ ] Project metadata is clean.
+- [x] `MODULES_ARCHITECTURE.md` exists and is approved.
+- [x] v1 specs are reviewed and frozen.
+- [x] README reflects current architecture.
+- [x] Duplicate/historical docs are ordered.
+- [x] Project metadata is clean.
 - [x] Three real modules work without touching core.
 - [x] Module frictions are classified.
 - [x] Blocking bugs are fixed.
 - [x] Tests/verifications are green.
 - [x] Minimum performance is validated.
-- [ ] Future core-change policy is written.
+- [x] Future core-change policy is written.
 
 ## Formal declaration
 
-- [ ] Create `CORE_FREEZE_V1.md` or equivalent section in `MODULES_ARCHITECTURE.md`.
-- [ ] Declare freeze date.
-- [ ] Declare frozen core scope.
-- [ ] Declare frozen module API.
-- [ ] Declare allowed future core changes.
-- [ ] Declare that new features must be implemented as modules first.
+- [x] Create `CORE_FREEZE_V1.md` or equivalent section in `MODULES_ARCHITECTURE.md`.
+- [x] Declare freeze date.
+- [x] Declare frozen core scope.
+- [x] Declare frozen module API.
+- [x] Declare allowed future core changes.
+- [x] Declare that new features must be implemented as modules first.
 
 ---
 
