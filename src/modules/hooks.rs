@@ -43,7 +43,11 @@ pub fn dispatch_on_unload(modules: &mut [Box<dyn RuntimeModule>], ctx: &mut Modu
     }
 }
 
-pub fn dispatch_on_query_change(modules: &mut [Box<dyn RuntimeModule>], query: &str, ctx: &mut ModuleCtx) {
+pub fn dispatch_on_query_change(
+    modules: &mut [Box<dyn RuntimeModule>],
+    query: &str,
+    ctx: &mut ModuleCtx,
+) {
     for module in modules {
         module.on_query_change(query, ctx);
     }

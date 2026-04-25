@@ -31,7 +31,10 @@ fn p95_duration_ms(samples: &mut [u128]) -> u128 {
 }
 
 fn estimated_dataset_bytes(items: &[LauncherItem]) -> usize {
-    items.iter().map(|item| item.label.len() + item.target.len()).sum()
+    items
+        .iter()
+        .map(|item| item.label.len() + item.target.len())
+        .sum()
 }
 
 fn print_metrics(
@@ -48,7 +51,12 @@ fn print_metrics(
         "expl".to_string(),
     ];
 
-    for label in app_state.all_items.iter().take(15).map(|item| item.label.as_str()) {
+    for label in app_state
+        .all_items
+        .iter()
+        .take(15)
+        .map(|item| item.label.as_str())
+    {
         let q: String = label.chars().take(3).collect::<String>().to_lowercase();
         if q.len() >= 2 {
             queries.push(q);
@@ -69,13 +77,19 @@ fn print_metrics(
     println!("rmenu metrics");
     println!("- startup_prepare_ms: {}", startup_ms);
     if let Some(ui) = ui_metrics {
-        println!("- time_to_window_visible_ms: {}", ui.time_to_window_visible_ms);
+        println!(
+            "- time_to_window_visible_ms: {}",
+            ui.time_to_window_visible_ms
+        );
         println!("- time_to_first_paint_ms: {}", ui.time_to_first_paint_ms);
         println!("- time_to_input_ready_ms: {}", ui.time_to_input_ready_ms);
     }
     println!("- search_p95_ms: {:.3}", p95_ms);
     println!("- dataset_items: {}", app_state.all_items.len());
-    println!("- dataset_estimated_bytes: {}", estimated_dataset_bytes(&app_state.all_items));
+    println!(
+        "- dataset_estimated_bytes: {}",
+        estimated_dataset_bytes(&app_state.all_items)
+    );
     println!("- index_cache_bytes: {}", cache_size);
 }
 
@@ -119,7 +133,9 @@ fn main() -> windows::core::Result<()> {
                         .lines()
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
-                        .map(|s| LauncherItem::new(s.to_string(), s.to_string(), LauncherSource::Direct))
+                        .map(|s| {
+                            LauncherItem::new(s.to_string(), s.to_string(), LauncherSource::Direct)
+                        })
                         .collect();
                 }
             }
@@ -158,7 +174,9 @@ fn main() -> windows::core::Result<()> {
         max_items_per_provider_host: app_config.modules.max_items_per_provider_host,
         dedupe_source_priority: match app_config.modules.dedupe_source_priority {
             settings::DedupeSourcePriority::CoreFirst => modules::DedupeSourcePriority::CoreFirst,
-            settings::DedupeSourcePriority::ProviderFirst => modules::DedupeSourcePriority::ProviderFirst,
+            settings::DedupeSourcePriority::ProviderFirst => {
+                modules::DedupeSourcePriority::ProviderFirst
+            }
         },
         host_restart_backoff_ms: app_config.modules.host_restart_backoff_ms,
         max_ipc_payload_bytes: app_config.modules.max_ipc_payload_bytes,
@@ -175,7 +193,13 @@ fn main() -> windows::core::Result<()> {
 
     if cmd_options.metrics {
         let startup_ms = startup_t0.elapsed().as_millis();
-        let ui_metrics = measure_ui_latencies(&cmd_options, &app_config, initial_app_state.clone(), module_runtime).ok();
+        let ui_metrics = measure_ui_latencies(
+            &cmd_options,
+            &app_config,
+            initial_app_state.clone(),
+            module_runtime,
+        )
+        .ok();
         print_metrics(&initial_app_state, case_sensitive, startup_ms, ui_metrics);
         return Ok(());
     }

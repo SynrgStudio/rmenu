@@ -75,12 +75,48 @@ host_restart_backoff_ms = 800
 max_ipc_payload_bytes = 262144
 ```
 
+### `provider_total_budget_ms`
+
+Approximate global per-query budget for collecting external provider responses. Once the budget is exhausted, later provider hosts may be skipped for that query. This protects input latency.
+
+Default: `35`.
+
+### `provider_timeout_ms`
+
+Maximum time to wait for one external host request before treating it as failed. Timeout failures are isolated to the module host and may trigger restart/backoff/disable policy.
+
+Default: `1500`.
+
+### `max_items_per_provider_host`
+
+Maximum provider items accepted from one host before sanitization and merge. Extra items are dropped to bound memory, rendering, and ranking work.
+
+Default: `24`.
+
 ### `dedupe_source_priority`
+
+Controls which source wins when core items and provider items resolve to the same launch target.
 
 Values:
 
-- `core_first`
-- `provider_first`
+- `core_first`: built-in launcher sources win over provider items.
+- `provider_first`: provider items win over built-in launcher sources.
+
+Default: `core_first`.
+
+### `host_restart_backoff_ms`
+
+Minimum delay before trying to restart a failed external host again. This avoids restart loops when a module repeatedly fails.
+
+Default: `800`.
+
+### `max_ipc_payload_bytes`
+
+Maximum IPC request/response payload size. Oversized payloads are rejected to protect the launcher process.
+
+Default: `262144`.
+
+Invalid or missing values fall back to safe defaults. Use `rmenu.exe --modules-debug` to inspect the effective policy and host health.
 
 ---
 

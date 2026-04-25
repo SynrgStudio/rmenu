@@ -11,13 +11,33 @@ pub struct HostRequest {
 pub enum HostRequestPayload {
     Ping,
     Initialize(ModuleInitPayload),
-    OnLoad { snapshot: Option<IpcSnapshot> },
-    OnQueryChange { query: String, snapshot: IpcSnapshot },
-    OnKey { event: IpcKeyEvent, snapshot: IpcSnapshot },
-    ProvideItems { query: String, snapshot: IpcSnapshot },
-    DecorateItems { items: Vec<IpcItem>, snapshot: IpcSnapshot },
-    OnCommand { command: String, args: Vec<String>, snapshot: IpcSnapshot },
-    OnUnload { snapshot: Option<IpcSnapshot> },
+    OnLoad {
+        snapshot: Option<IpcSnapshot>,
+    },
+    OnQueryChange {
+        query: String,
+        snapshot: IpcSnapshot,
+    },
+    OnKey {
+        event: IpcKeyEvent,
+        snapshot: IpcSnapshot,
+    },
+    ProvideItems {
+        query: String,
+        snapshot: IpcSnapshot,
+    },
+    DecorateItems {
+        items: Vec<IpcItem>,
+        snapshot: IpcSnapshot,
+    },
+    OnCommand {
+        command: String,
+        args: Vec<String>,
+        snapshot: IpcSnapshot,
+    },
+    OnUnload {
+        snapshot: Option<IpcSnapshot>,
+    },
     Shutdown,
 }
 

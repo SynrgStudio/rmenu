@@ -104,9 +104,7 @@ fn looks_like_url(value: &str) -> bool {
 }
 
 fn looks_like_path(value: &str) -> bool {
-    value.contains('\\')
-        || value.contains('/')
-        || (value.len() >= 2 && value.as_bytes()[1] == b':')
+    value.contains('\\') || value.contains('/') || (value.len() >= 2 && value.as_bytes()[1] == b':')
 }
 
 fn should_fallback_to_cmd(raw_target: &str, file_part: &str) -> bool {
@@ -148,7 +146,10 @@ fn launch_with_shell_execute(file: &str, args: Option<&str>) -> io::Result<()> {
     } else {
         Err(io::Error::new(
             io::ErrorKind::Other,
-            format!("ShellExecuteW failed for '{file}' with code {}", result.0 as usize),
+            format!(
+                "ShellExecuteW failed for '{file}' with code {}",
+                result.0 as usize
+            ),
         ))
     }
 }
@@ -161,7 +162,12 @@ fn launch_with_cmd_start(raw_target: &str) -> io::Result<()> {
         .arg(raw_target)
         .spawn()
         .map(|_| ())
-        .map_err(|err| io::Error::new(err.kind(), format!("cmd start failed for '{raw_target}': {err}")))
+        .map_err(|err| {
+            io::Error::new(
+                err.kind(),
+                format!("cmd start failed for '{raw_target}': {err}"),
+            )
+        })
 }
 
 pub fn launch_target(target: &str) -> io::Result<()> {
@@ -247,6 +253,9 @@ mod tests {
         assert!(should_fallback_to_cmd("cmd /k dir", "cmd"));
         assert!(should_fallback_to_cmd("echo hello && pause", "echo"));
         assert!(!should_fallback_to_cmd("notepad.exe", "notepad.exe"));
-        assert!(!should_fallback_to_cmd("C:/Windows/notepad.exe", "C:/Windows/notepad.exe"));
+        assert!(!should_fallback_to_cmd(
+            "C:/Windows/notepad.exe",
+            "C:/Windows/notepad.exe"
+        ));
     }
 }

@@ -120,15 +120,23 @@ pub fn parse_rmod(content: &str, source_path: String) -> Result<ModuleDescriptor
 
     for line in remainder_lines {
         let trimmed = line.trim();
-        let is_delimiter = trimmed.starts_with("---") && trimmed.ends_with("---") && trimmed.len() > 6;
+        let is_delimiter =
+            trimmed.starts_with("---") && trimmed.ends_with("---") && trimmed.len() > 6;
 
         if is_delimiter {
             if let Some(block_name) = current_block.take() {
-                blocks.insert(block_name, current_content.trim_end_matches('\n').to_string());
+                blocks.insert(
+                    block_name,
+                    current_content.trim_end_matches('\n').to_string(),
+                );
                 current_content.clear();
             }
 
-            let block_name = trimmed.trim_start_matches("---").trim_end_matches("---").trim().to_string();
+            let block_name = trimmed
+                .trim_start_matches("---")
+                .trim_end_matches("---")
+                .trim()
+                .to_string();
             if blocks.contains_key(&block_name) {
                 return Err(RmodParseError::DuplicateBlock(block_name));
             }
@@ -143,7 +151,10 @@ pub fn parse_rmod(content: &str, source_path: String) -> Result<ModuleDescriptor
     }
 
     if let Some(block_name) = current_block {
-        blocks.insert(block_name, current_content.trim_end_matches('\n').to_string());
+        blocks.insert(
+            block_name,
+            current_content.trim_end_matches('\n').to_string(),
+        );
     }
 
     let entry_code = blocks

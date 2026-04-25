@@ -9,7 +9,13 @@ fn main() {
     }
 
     let out_dir = env::var("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir).parent().unwrap().parent().unwrap().parent().unwrap();
+    let dest_path = Path::new(&out_dir)
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
 
     copy_if_exists("config_example.ini", dest_path);
     copy_if_exists("README.md", dest_path);

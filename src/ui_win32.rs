@@ -1,6 +1,7 @@
 use crate::app_state::{ensure_selection_visible, AppState};
 use crate::launcher::{
-    abbreviate_target, centered_text_y, compact_target_hint, launch_target, truncate_with_ellipsis_end,
+    abbreviate_target, centered_text_y, compact_target_hint, launch_target,
+    truncate_with_ellipsis_end,
 };
 use crate::modules::{
     input_accessory_text,
@@ -21,8 +22,8 @@ use windows::{
     Win32::{
         Foundation::{BOOL, COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, CreateFontW, CreateSolidBrush, EndPaint, FillRect, InvalidateRect, PAINTSTRUCT,
-            SelectObject, SetBkColor, SetTextColor, TextOutW,
+            BeginPaint, CreateFontW, CreateSolidBrush, EndPaint, FillRect, InvalidateRect,
+            SelectObject, SetBkColor, SetTextColor, TextOutW, PAINTSTRUCT,
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
@@ -33,9 +34,9 @@ use windows::{
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetSystemMetrics,
                 LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetForegroundWindow,
-                ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW,
-                MSG, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, WINDOW_EX_STYLE, WM_CHAR, WM_CREATE,
-                WM_DESTROY, WM_KEYDOWN, WM_PAINT, WM_QUIT, WNDCLASSW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+                ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MSG, PM_REMOVE,
+                SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, WINDOW_EX_STYLE, WM_CHAR, WM_CREATE, WM_DESTROY,
+                WM_KEYDOWN, WM_PAINT, WM_QUIT, WNDCLASSW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
                 WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
             },
         },
@@ -142,7 +143,11 @@ fn accessory_text_color(kind: InputAccessoryKind, config: &RmenuConfig) -> COLOR
     }
 }
 
-fn calculate_position_detailed(position_str: &str, screen_dimension: i32, window_dimension: i32) -> i32 {
+fn calculate_position_detailed(
+    position_str: &str,
+    screen_dimension: i32,
+    window_dimension: i32,
+) -> i32 {
     if position_str.starts_with('r') {
         if let Ok(relative) = position_str[1..].parse::<f32>() {
             return ((screen_dimension as f32 * relative) - (window_dimension as f32 / 2.0)) as i32;
@@ -169,10 +174,13 @@ fn determine_window_geometry(
     let screen_width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
     let screen_height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
 
-    let final_layout_str = cmd_opts
-        .layout
-        .as_deref()
-        .unwrap_or_else(|| config.dimensions.default_layout.as_deref().unwrap_or("custom"));
+    let final_layout_str = cmd_opts.layout.as_deref().unwrap_or_else(|| {
+        config
+            .dimensions
+            .default_layout
+            .as_deref()
+            .unwrap_or("custom")
+    });
 
     let mut x: i32;
     let mut y: i32;
@@ -310,7 +318,12 @@ fn determine_window_geometry(
         y = calculate_position_detailed(cli_y_str, screen_height, h);
     }
 
-    WindowGeometry { x, y, width: w, height: h }
+    WindowGeometry {
+        x,
+        y,
+        width: w,
+        height: h,
+    }
 }
 
 fn update_matching_items_from_config(app_state: &mut AppState) {
@@ -329,7 +342,9 @@ fn update_matching_items_from_config(app_state: &mut AppState) {
     }
 
     let config_guard = CONFIG.lock().unwrap();
-    let case_sensitive = config_guard.as_ref().map_or(false, |c| c.behavior.case_sensitive);
+    let case_sensitive = config_guard
+        .as_ref()
+        .map_or(false, |c| c.behavior.case_sensitive);
     let max_visible_items = config_guard
         .as_ref()
         .map_or(10usize, |c| c.behavior.max_items.max(1) as usize);
@@ -384,8 +399,12 @@ fn resolve_key_name(key_code: i32) -> String {
         code if code == VK_BACK.0 as i32 => "backspace".to_string(),
         code if code == VK_UP.0 as i32 => "up".to_string(),
         code if code == VK_DOWN.0 as i32 => "down".to_string(),
-        code if (0x30..=0x39).contains(&code) => char::from_u32(code as u32).unwrap_or('?').to_string(),
-        code if (0x41..=0x5A).contains(&code) => char::from_u32((code + 32) as u32).unwrap_or('?').to_string(),
+        code if (0x30..=0x39).contains(&code) => {
+            char::from_u32(code as u32).unwrap_or('?').to_string()
+        }
+        code if (0x41..=0x5A).contains(&code) => char::from_u32((code + 32) as u32)
+            .unwrap_or('?')
+            .to_string(),
         _ => format!("vk_{key_code}"),
     }
 }
@@ -404,8 +423,13 @@ fn build_module_key_event(key_code: i32) -> ModuleKeyEvent {
     }
 }
 
-fn find_quick_select_index(app_state: &AppState, key: char, max_visible_items: usize) -> Option<usize> {
-    let visible_end = (app_state.scroll_offset + max_visible_items).min(app_state.matching_items.len());
+fn find_quick_select_index(
+    app_state: &AppState,
+    key: char,
+    max_visible_items: usize,
+) -> Option<usize> {
+    let visible_end =
+        (app_state.scroll_offset + max_visible_items).min(app_state.matching_items.len());
     let key_str = key.to_string();
 
     for item_index in app_state.scroll_offset..visible_end {
@@ -581,7 +605,16 @@ unsafe extern "system" fn window_proc(
                 if final_border_width > 0 {
                     let border_brush = CreateSolidBrush(config.colors.border);
                     let bw = final_border_width;
-                    FillRect(hdc, &RECT { left: 0, top: 0, right: rect.right, bottom: bw }, border_brush);
+                    FillRect(
+                        hdc,
+                        &RECT {
+                            left: 0,
+                            top: 0,
+                            right: rect.right,
+                            bottom: bw,
+                        },
+                        border_brush,
+                    );
                     FillRect(
                         hdc,
                         &RECT {
@@ -662,11 +695,13 @@ unsafe extern "system" fn window_proc(
 
                 if let Some(accessory) = accessory {
                     let accessory_text = input_accessory_text(&accessory);
-                    let max_chars = ((rect.right - (x_offset + current_padding * 2)) / char_w).max(0) as usize;
+                    let max_chars =
+                        ((rect.right - (x_offset + current_padding * 2)) / char_w).max(0) as usize;
                     if max_chars >= 6 {
                         let accessory_draw = truncate_with_ellipsis_end(&accessory_text, max_chars);
                         let accessory_w = accessory_draw.chars().count() as i32 * char_w;
-                        let accessory_x = (rect.right - current_padding - accessory_w).max(x_offset + current_padding);
+                        let accessory_x = (rect.right - current_padding - accessory_w)
+                            .max(x_offset + current_padding);
                         let old_color = accessory_text_color(accessory.kind, &config);
                         SetTextColor(hdc, old_color);
                         draw_text_w(hdc, accessory_x, input_text_y, &accessory_draw);
@@ -677,9 +712,11 @@ unsafe extern "system" fn window_proc(
                 let current_item_height = config.dimensions.item_height;
                 let max_items_to_display = config.behavior.max_items.max(1) as usize;
 
-                let visible_end = (app_state.scroll_offset + max_items_to_display).min(app_state.matching_items.len());
+                let visible_end = (app_state.scroll_offset + max_items_to_display)
+                    .min(app_state.matching_items.len());
 
-                for (visible_row, item_index) in (app_state.scroll_offset..visible_end).enumerate() {
+                for (visible_row, item_index) in (app_state.scroll_offset..visible_end).enumerate()
+                {
                     let item = &app_state.matching_items[item_index];
                     let y = input_bar_actual_height + (current_item_height * visible_row as i32);
 
@@ -710,7 +747,9 @@ unsafe extern "system" fn window_proc(
                     let default_hint = compact_target_hint(&item.target);
                     let row = compute_row_zones(
                         &item.label,
-                        item.trailing_hint.as_deref().unwrap_or(default_hint.as_str()),
+                        item.trailing_hint
+                            .as_deref()
+                            .unwrap_or(default_hint.as_str()),
                         chip_text,
                         left_x,
                         row_right_bound,
@@ -760,26 +799,38 @@ unsafe extern "system" fn window_proc(
                 } else if let Some(digit_key) = resolve_digit_from_key(key_code) {
                     let (max_visible, quick_select_mode) = {
                         let config_guard = CONFIG.lock().unwrap();
-                        let max_visible = config_guard.as_ref().map_or(10usize, |c| c.behavior.max_items.max(1) as usize);
+                        let max_visible = config_guard
+                            .as_ref()
+                            .map_or(10usize, |c| c.behavior.max_items.max(1) as usize);
                         let mode = config_guard
                             .as_ref()
                             .map_or(QuickSelectMode::Submit, |c| c.behavior.quick_select_mode);
                         (max_visible, mode)
                     };
 
-                    if let Some(item_index) = find_quick_select_index(app_state, digit_key, max_visible) {
+                    if let Some(item_index) =
+                        find_quick_select_index(app_state, digit_key, max_visible)
+                    {
                         app_state.selected_index = item_index;
                         ensure_selection_visible(app_state, max_visible);
 
                         if quick_select_mode == QuickSelectMode::Submit {
-                            let selected = app_state.matching_items[app_state.selected_index].clone();
+                            let selected =
+                                app_state.matching_items[app_state.selected_index].clone();
                             if app_state.launcher_mode {
                                 if let Err(e) = launch_target(&selected.target) {
                                     if !app_state.silent_mode {
-                                        eprintln!("Error launching target '{}': {}", selected.target, e);
+                                        eprintln!(
+                                            "Error launching target '{}': {}",
+                                            selected.target, e
+                                        );
                                     }
                                 } else {
-                                    persist_history_entry(&selected.target, app_state.silent_mode, app_state.history_max_items);
+                                    persist_history_entry(
+                                        &selected.target,
+                                        app_state.silent_mode,
+                                        app_state.history_max_items,
+                                    );
                                 }
                             } else {
                                 println!("{}", selected.label);
@@ -790,15 +841,24 @@ unsafe extern "system" fn window_proc(
                         }
                     }
                 } else if key_code == VK_RETURN.0 as i32 {
-                    if !app_state.matching_items.is_empty() && app_state.selected_index < app_state.matching_items.len() {
+                    if !app_state.matching_items.is_empty()
+                        && app_state.selected_index < app_state.matching_items.len()
+                    {
                         let selected = app_state.matching_items[app_state.selected_index].clone();
                         if app_state.launcher_mode {
                             if let Err(e) = launch_target(&selected.target) {
                                 if !app_state.silent_mode {
-                                    eprintln!("Error launching target '{}': {}", selected.target, e);
+                                    eprintln!(
+                                        "Error launching target '{}': {}",
+                                        selected.target, e
+                                    );
                                 }
                             } else {
-                                persist_history_entry(&selected.target, app_state.silent_mode, app_state.history_max_items);
+                                persist_history_entry(
+                                    &selected.target,
+                                    app_state.silent_mode,
+                                    app_state.history_max_items,
+                                );
                             }
                         } else {
                             println!("{}", selected.label);
@@ -808,16 +868,25 @@ unsafe extern "system" fn window_proc(
                         if let Some(raw_command) = current_input.strip_prefix('/') {
                             let parts = raw_command.split_whitespace().collect::<Vec<_>>();
                             if let Some((command, rest)) = parts.split_first() {
-                                let args = rest.iter().map(|v| (*v).to_string()).collect::<Vec<_>>();
+                                let args =
+                                    rest.iter().map(|v| (*v).to_string()).collect::<Vec<_>>();
                                 let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
                                 if let Some(runtime) = runtime_guard.as_mut() {
-                                    runtime.dispatch_command(app_state, command, &args, app_state.silent_mode);
+                                    runtime.dispatch_command(
+                                        app_state,
+                                        command,
+                                        &args,
+                                        app_state.silent_mode,
+                                    );
                                 }
                             }
                         } else if app_state.launcher_mode {
                             if let Err(e) = launch_target(&app_state.current_input) {
                                 if !app_state.silent_mode {
-                                    eprintln!("Error launching input '{}': {}", app_state.current_input, e);
+                                    eprintln!(
+                                        "Error launching input '{}': {}",
+                                        app_state.current_input, e
+                                    );
                                 }
                             } else {
                                 persist_history_entry(
@@ -833,10 +902,13 @@ unsafe extern "system" fn window_proc(
                     PostQuitMessage(0);
                 } else if key_code == VK_DOWN.0 as i32 {
                     if !app_state.matching_items.is_empty() {
-                        app_state.selected_index = (app_state.selected_index + 1) % app_state.matching_items.len();
+                        app_state.selected_index =
+                            (app_state.selected_index + 1) % app_state.matching_items.len();
                         let max_visible = {
                             let config_guard = CONFIG.lock().unwrap();
-                            config_guard.as_ref().map_or(10usize, |c| c.behavior.max_items.max(1) as usize)
+                            config_guard
+                                .as_ref()
+                                .map_or(10usize, |c| c.behavior.max_items.max(1) as usize)
                         };
                         ensure_selection_visible(app_state, max_visible);
                         InvalidateRect(hwnd, None, true);
@@ -844,10 +916,13 @@ unsafe extern "system" fn window_proc(
                 } else if key_code == VK_UP.0 as i32 {
                     if !app_state.matching_items.is_empty() {
                         app_state.selected_index =
-                            (app_state.selected_index + app_state.matching_items.len() - 1) % app_state.matching_items.len();
+                            (app_state.selected_index + app_state.matching_items.len() - 1)
+                                % app_state.matching_items.len();
                         let max_visible = {
                             let config_guard = CONFIG.lock().unwrap();
-                            config_guard.as_ref().map_or(10usize, |c| c.behavior.max_items.max(1) as usize)
+                            config_guard
+                                .as_ref()
+                                .map_or(10usize, |c| c.behavior.max_items.max(1) as usize)
                         };
                         ensure_selection_visible(app_state, max_visible);
                         InvalidateRect(hwnd, None, true);
@@ -860,8 +935,13 @@ unsafe extern "system" fn window_proc(
                         InvalidateRect(hwnd, None, true);
                     }
                 } else if key_code == VK_TAB.0 as i32 {
-                    if !app_state.matching_items.is_empty() && app_state.selected_index < app_state.matching_items.len() {
-                        app_state.current_input = app_state.matching_items[app_state.selected_index].label.clone();
+                    if !app_state.matching_items.is_empty()
+                        && app_state.selected_index < app_state.matching_items.len()
+                    {
+                        app_state.current_input = app_state.matching_items
+                            [app_state.selected_index]
+                            .label
+                            .clone();
                         update_matching_items_from_config(app_state);
                         InvalidateRect(hwnd, None, true);
                     }
@@ -889,7 +969,9 @@ unsafe extern "system" fn window_proc(
         WM_DESTROY => {
             let mut app_state_guard = APP_STATE.lock().unwrap();
             let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
-            if let (Some(app_state), Some(runtime)) = (app_state_guard.as_mut(), runtime_guard.as_mut()) {
+            if let (Some(app_state), Some(runtime)) =
+                (app_state_guard.as_mut(), runtime_guard.as_mut())
+            {
                 runtime.run_on_unload(app_state);
             }
             *runtime_guard = None;
@@ -951,9 +1033,11 @@ fn run_ui_internal(
 
         let num_items_for_geom = {
             let app_state_guard = APP_STATE.lock().unwrap();
-            app_state_guard
-                .as_ref()
-                .map_or(0, |s| s.matching_items.len().min(config.behavior.max_items as usize))
+            app_state_guard.as_ref().map_or(0, |s| {
+                s.matching_items
+                    .len()
+                    .min(config.behavior.max_items as usize)
+            })
         };
 
         let geometry = determine_window_geometry(cmd_options, config, num_items_for_geom);
@@ -1036,7 +1120,13 @@ pub fn run_ui(
     initial_app_state: AppState,
     module_runtime: ModuleRuntime,
 ) -> windows::core::Result<i32> {
-    run_ui_internal(cmd_options, config, initial_app_state, module_runtime, false)
+    run_ui_internal(
+        cmd_options,
+        config,
+        initial_app_state,
+        module_runtime,
+        false,
+    )
 }
 
 pub fn measure_ui_latencies(
@@ -1065,11 +1155,19 @@ mod tests {
 
     #[test]
     fn quick_select_conflicts_keep_first_visible_item() {
-        let mut first = LauncherItem::new("First".to_string(), "t1".to_string(), LauncherSource::Direct);
+        let mut first = LauncherItem::new(
+            "First".to_string(),
+            "t1".to_string(),
+            LauncherSource::Direct,
+        );
         first.quick_select_key = Some("1".to_string());
         first.trailing_badge = Some("1".to_string());
 
-        let mut second = LauncherItem::new("Second".to_string(), "t2".to_string(), LauncherSource::Direct);
+        let mut second = LauncherItem::new(
+            "Second".to_string(),
+            "t2".to_string(),
+            LauncherSource::Direct,
+        );
         second.quick_select_key = Some("1".to_string());
         second.trailing_badge = Some("1".to_string());
 
@@ -1080,7 +1178,10 @@ mod tests {
 
         normalize_quick_select_items(&mut state);
 
-        assert_eq!(state.matching_items[0].quick_select_key.as_deref(), Some("1"));
+        assert_eq!(
+            state.matching_items[0].quick_select_key.as_deref(),
+            Some("1")
+        );
         assert_eq!(state.matching_items[1].quick_select_key, None);
         assert_eq!(state.matching_items[1].trailing_badge, None);
     }

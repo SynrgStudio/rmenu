@@ -162,7 +162,7 @@ Checklist:
 
 ## 2.3 Real module: shortcuts / quick actions
 
-Status: implemented with `modules/shortcuts.rmod`; pending manual Enter validation.
+Status: implemented with `modules/shortcuts.rmod`; manually validated by the user so far.
 
 UX decision:
 
@@ -180,11 +180,11 @@ Checklist:
 - [x] Declare capabilities required for binding flow (`input-accessory`, `commands`, `keys`).
 - [x] Use external `ctx.selectedItem()` snapshot for `Ctrl+B` binding flow.
 - [x] Use external `ctx.setQuery(...)` action to prefill `/shortcuts::bind `.
-- [ ] Manually confirm Blender launches via `b` + Enter.
-- [ ] Manually confirm Blender launches via `1` + Enter.
-- [ ] Manually confirm non-exact inputs do not activate shortcuts.
+- [x] Manually confirm Blender launches via `b` + Enter.
+- [x] Manually confirm Blender launches via `1` + Enter.
+- [x] Manually confirm non-exact inputs do not activate shortcuts.
 - [x] Manually confirm plain text input remains immediate with `shortcuts` loaded.
-- [ ] Manually confirm adding a new shortcut with `Ctrl+B` + `/shortcuts::bind <alias>`.
+- [x] Manually confirm adding a new shortcut with `Ctrl+B` + `/shortcuts::bind <alias>`.
 - [x] Confirm core changes are v1 contract corrections/general actions, not shortcut-specific behavior.
 - [x] Document behavior.
 
@@ -231,6 +231,10 @@ Pending:
 
 # Phase 4 — Tests and verification
 
+Status: complete.
+
+Phase 4 is closed with automated tests, local diagnostics, stdin/script validation, `--reindex --metrics` validation, and minimum performance targets documented.
+
 ## 4.1 Automated tests to add
 
 - [x] Valid/invalid `.rmod` parser tests.
@@ -253,37 +257,39 @@ Pending:
 - [x] `cargo fmt`
 - [x] `cargo check`
 - [x] `cargo test`
-- [ ] `cargo clippy` if adopted by the project flow.
-- [ ] `rmenu --metrics`
-- [ ] `rmenu --debug-ranking <query>`
+- [x] `cargo clippy` if adopted by the project flow — not adopted as mandatory for this project.
+- [x] `rmenu --metrics`
+- [x] `rmenu --debug-ranking <query>`
 - [x] `rmenu --modules-debug`
-- [ ] Manual launcher mode test.
-- [ ] Manual stdin/script mode test.
+- [x] Manual launcher mode test.
+- [x] Manual stdin/script mode test.
 
 ## 4.3 Minimum performance targets
 
-- [ ] Define startup budget.
-- [ ] Define search p95 budget.
-- [ ] Define time-to-window-visible budget.
-- [ ] Define provider budget.
-- [ ] Confirm slow modules do not severely degrade UI.
-- [ ] Confirm index cache invalidation and `--reindex`.
+- [x] Define startup budget.
+- [x] Define search p95 budget.
+- [x] Define time-to-window-visible budget.
+- [x] Define provider budget.
+- [x] Confirm slow modules do not severely degrade UI.
+- [x] Confirm index cache invalidation and `--reindex`.
 
 ---
 
 # Phase 5 — Product/core polish
 
+Status: active; only manual base-launcher UX validation remains.
+
 Pending:
 
 - [ ] Validate base launcher UX without modules.
-- [ ] Confirm no fuzzy/ranking regression.
-- [ ] Confirm friendly app labels and executable-name search.
-- [ ] Confirm ShellExecuteW launch and controlled fallback.
-- [ ] Confirm persistent history.
-- [ ] Review `config_example.ini`.
-- [ ] Document `[Modules]` config fully.
-- [ ] Confirm safe defaults and invalid-config behavior.
-- [ ] Define standard module location, examples, naming, capabilities, command namespace, sharing, and versioning.
+- [x] Confirm no fuzzy/ranking regression.
+- [x] Confirm friendly app labels and executable-name search.
+- [x] Confirm ShellExecuteW launch and controlled fallback.
+- [x] Confirm persistent history.
+- [x] Review `config_example.ini`.
+- [x] Document `[Modules]` config fully.
+- [x] Confirm safe defaults and invalid-config behavior.
+- [x] Define standard module location, examples, naming, capabilities, command namespace, sharing, and versioning.
 
 ---
 
@@ -293,10 +299,7 @@ Do not start yet.
 
 Blockers:
 
-- need manual validation of the third real module (`shortcuts`),
-- need hardening,
-- need specific tests,
-- need minimum performance validation.
+- Phase 5 still needs manual base launcher UX validation without modules.
 
 ## Final checklist before freeze
 
@@ -308,8 +311,8 @@ Blockers:
 - [ ] Three real modules work without touching core.
 - [ ] Module frictions are classified.
 - [ ] Blocking bugs are fixed.
-- [ ] Tests/verifications are green.
-- [ ] Minimum performance is validated.
+- [x] Tests/verifications are green.
+- [x] Minimum performance is validated.
 - [ ] Future core-change policy is written.
 
 ## Formal declaration

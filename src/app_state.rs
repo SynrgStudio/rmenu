@@ -112,18 +112,20 @@ pub fn source_boost(app_state: &AppState, source: LauncherSource) -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppState, LauncherItem, LauncherSource, ensure_selection_visible, source_boost};
+    use super::{ensure_selection_visible, source_boost, AppState, LauncherItem, LauncherSource};
     use crate::fuzzy::fuzzy_score;
 
     #[test]
     fn selection_visibility_tracks_scroll_window() {
         let mut state = AppState {
             matching_items: (0..20)
-                .map(|i| LauncherItem::new(
-                    format!("item-{i}"),
-                    format!("target-{i}"),
-                    LauncherSource::Direct,
-                ))
+                .map(|i| {
+                    LauncherItem::new(
+                        format!("item-{i}"),
+                        format!("target-{i}"),
+                        LauncherSource::Direct,
+                    )
+                })
                 .collect(),
             selected_index: 15,
             scroll_offset: 0,
@@ -146,8 +148,8 @@ mod tests {
             ..Default::default()
         };
 
-        let pow_shell_score =
-            fuzzy_score("pow", "windows powershell", false) + source_boost(&state, LauncherSource::StartMenu);
+        let pow_shell_score = fuzzy_score("pow", "windows powershell", false)
+            + source_boost(&state, LauncherSource::StartMenu);
         let powercfg_score =
             fuzzy_score("pow", "powercfg", false) + source_boost(&state, LauncherSource::Path);
 

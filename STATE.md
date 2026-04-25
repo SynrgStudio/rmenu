@@ -48,11 +48,39 @@ Current test result:
 
 Phase 3 hardening passes added targeted tests and diagnostics improvements, then `cargo fmt`, `cargo test`, `cargo check`, and `cargo run --bin rmenu -- --modules-debug` were run successfully.
 
+Phase 4 verification is complete. Automated tests, diagnostics, stdin/script mode, `--reindex --metrics`, and minimum performance targets are validated/documented. Phase 5 is now the active closure phase, with only manual base launcher UX validation without modules still pending.
+
 Latest `/start-cont Completa Phase 3` checkpoint: added `AUTONOMOUS_EXECUTION.md`, expanded host/client hardening tests, validated request timeout kill behavior, host request/response payload handling, hot reload/debounce, reload health/backoff reset, provider/command/input-accessory capability allow/deny, disabled modules, deterministic ordering, module-host invalid-state behavior, external-host error isolation, key capability routing, auto-disable thresholds, and restart backoff. Phase 3 is complete.
 
 After translating root documentation and updating `build.rs`, `cargo check` was run again successfully.
 
 `build.rs` no longer emits `cargo:warning` for successful copies of `config_example.ini` and `README.md`.
+
+Latest Phase 4 user validation:
+
+```bash
+cargo fmt
+cargo check
+cargo test
+cargo run --bin rmenu -- --modules-debug
+cargo run --bin rmenu -- --metrics
+cargo run --bin rmenu -- --debug-ranking blender
+```
+
+Results: formatting/check/tests passed; tests were 72 total, 0 failed; `--modules-debug`, `--metrics`, and `--debug-ranking blender` produced valid diagnostic output. User confirmed shortcuts manual validation has worked so far, including Blender aliases, non-exact fallback, and new shortcut binding.
+
+Latest follow-up validation after Phase 4/5 cleanup:
+
+```bash
+cargo fmt
+cargo test settings::tests
+cargo test
+cargo check
+```
+
+Results: new settings tests passed; full tests now 74 total, 0 failed; `cargo check` passed.
+
+Observed issue: running `cargo run --bin rmenu -- --reindex` rebuilt/started the launcher path but later printed `module 'shortcuts' disabled after repeated failures`; closing with Esc returned exit code 1. Esc-as-cancel may explain the Cargo nonzero report. Follow-up diagnostics showed a clean `--modules-debug` state for `shortcuts` and `cargo run --bin rmenu -- --reindex --metrics` completed successfully in the user's PowerShell session with startup_prepare_ms 567, time_to_window_visible_ms 30, time_to_input_ready_ms 36, and search_p95_ms 4.271. Treat the auto-disable message as a transient observation to monitor, not an active freeze blocker unless it recurs.
 
 ---
 
@@ -348,23 +376,30 @@ Completed in latest Phase 3 passes:
 
 ### Phase 4 — Tests and verification
 
-Existing tests: 72 total across `rmenu` and `rmenu-module-host` test binaries.
+Status: complete.
+
+Existing tests: 74 total across `rmenu` and `rmenu-module-host` test binaries.
 
 Covered by current tests includes: `.rmod` parser basics, duplicate/missing blocks, invalid `.rmod` loader error, valid/invalid `module.toml`, quoted executable target parsing, mixed loader, deterministic module ordering, disabled modules not loaded, hot reload/debounce, reload health/backoff reset, external provider error isolation, external key capability routing, external timeout auto-disable, external restart backoff, dedupe, command collisions, provider item cap, quick-select duplicate behavior, input accessory kind/priority mapping, provider/command/input accessory capability allow/deny, host health disable after timeouts, host request timeout with child kill, oversized host request rejection, disabled host no-restart behavior, restart backoff attempt accounting, modules debug report contents, runtime module commands, external `ReplaceItems` action applying to visible items, external `SetQuery` action updating input, key-hook dispatch filtering for plain text input, host response invalid JSON tolerance, host request/response payload limit handling, module-host worker response payload limit handling, module-host payload env parsing, unloaded request errors, and shutdown state cleanup.
 
 Pending tests:
 
-- more external host action paths.
+- none required for Phase 4 closure; add more external host action path tests only if a new concrete gap appears.
 
 ### Phase 5 — Product/core polish
 
 Pending:
 
-- review full `config_example.ini`;
-- document `[Modules]` better;
-- validate base UX without modules;
-- validate performance;
-- confirm safe defaults.
+- validate base UX without modules.
+
+Completed/updated:
+
+- reviewed and translated `config_example.ini`;
+- documented `[Modules]` config in `MODULES_OPERATIONS_GUIDE.md`;
+- documented v1 module location/naming/capability/command/sharing/versioning conventions in `README.md`;
+- defined and documented minimum performance targets in `README.md`;
+- validated performance against the current 1108-item baseline;
+- added tests confirming valid module config parsing and invalid module config fallback to safe defaults.
 
 ### Phase 6 — Freeze declaration
 
@@ -372,22 +407,16 @@ Do not start yet.
 
 Blockers:
 
-- need manual validation of the third real module (`shortcuts`);
-- need hardening;
-- need specific tests;
-- need minimum performance validation.
+- need remaining Phase 5 manual base launcher UX validation without modules.
 
 ---
 
 ## Recommended next step
 
-Phase 3 is complete. Move next to Phase 4 verification cleanup and Phase 5 product/core polish:
+Phase 4 is complete. Continue Phase 5 product/core polish:
 
-- add remaining external host action path tests where useful;
-- run/manual-check launcher mode and stdin/script mode;
-- validate `--metrics`, `--debug-ranking <query>`, and performance targets;
-- review `config_example.ini` and `[Modules]` docs;
-- prepare for Phase 6 freeze only after Phase 4/5 blockers are resolved.
+- manually validate base launcher UX without modules;
+- prepare for Phase 6 freeze only after the remaining Phase 5 manual blocker is resolved.
 
 ---
 

@@ -95,7 +95,11 @@ pub fn persist_history_entry(target: &str, silent_mode: bool, max_items: usize) 
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             if !silent_mode {
-                eprintln!("Error creating history directory '{}': {}", parent.display(), e);
+                eprintln!(
+                    "Error creating history directory '{}': {}",
+                    parent.display(),
+                    e
+                );
             }
             return;
         }
@@ -156,7 +160,10 @@ fn read_version_info_string(block: &[u8], sub_block: &str) -> Option<String> {
     }
 
     let value_slice = unsafe {
-        std::slice::from_raw_parts(value_ptr as *const u16, value_len.saturating_sub(1) as usize)
+        std::slice::from_raw_parts(
+            value_ptr as *const u16,
+            value_len.saturating_sub(1) as usize,
+        )
     };
 
     let value = String::from_utf16(value_slice).ok()?;
@@ -211,14 +218,16 @@ fn read_exe_file_description(path: &Path) -> Option<String> {
 
     if has_translation && !translation_ptr.is_null() && translation_len >= 4 {
         let pair_count = (translation_len as usize) / 4;
-        let lang_pairs = unsafe {
-            std::slice::from_raw_parts(translation_ptr as *const u16, pair_count * 2)
-        };
+        let lang_pairs =
+            unsafe { std::slice::from_raw_parts(translation_ptr as *const u16, pair_count * 2) };
 
         for pair in lang_pairs.chunks_exact(2) {
             let lang = pair[0];
             let code_page = pair[1];
-            let sub_block = format!("\\StringFileInfo\\{:04X}{:04X}\\FileDescription", lang, code_page);
+            let sub_block = format!(
+                "\\StringFileInfo\\{:04X}{:04X}\\FileDescription",
+                lang, code_page
+            );
             if let Some(value) = read_version_info_string(&block, &sub_block) {
                 return Some(value);
             }
@@ -238,7 +247,10 @@ fn windowsapps_alias_display_label(path: &Path) -> Option<&'static str> {
         return None;
     }
 
-    let stem = path.file_stem().and_then(|value| value.to_str())?.to_ascii_lowercase();
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())?
+        .to_ascii_lowercase();
     match stem.as_str() {
         "mspaint" => Some("Paint"),
         "msedge" => Some("Microsoft Edge"),
@@ -413,9 +425,9 @@ fn start_menu_roots() -> [Option<PathBuf>; 2] {
     let user = std::env::var("APPDATA")
         .ok()
         .map(|appdata| Path::new(&appdata).join("Microsoft\\Windows\\Start Menu\\Programs"));
-    let common = std::env::var("ProgramData")
-        .ok()
-        .map(|program_data| Path::new(&program_data).join("Microsoft\\Windows\\Start Menu\\Programs"));
+    let common = std::env::var("ProgramData").ok().map(|program_data| {
+        Path::new(&program_data).join("Microsoft\\Windows\\Start Menu\\Programs")
+    });
 
     [user, common]
 }
@@ -437,7 +449,11 @@ fn dir_mtime_unix_ms(path: Option<&Path>) -> u64 {
 }
 
 fn current_env_signature() -> CacheEnvironmentSignature {
-    let path_hash = stable_fnv1a_64(&std::env::var("PATH").unwrap_or_default().to_ascii_lowercase());
+    let path_hash = stable_fnv1a_64(
+        &std::env::var("PATH")
+            .unwrap_or_default()
+            .to_ascii_lowercase(),
+    );
     let [user_root, common_root] = start_menu_roots();
 
     CacheEnvironmentSignature {
@@ -498,7 +514,11 @@ fn write_index_cache(items: &[LauncherItem], silent_mode: bool) {
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             if !silent_mode {
-                eprintln!("Error creating index cache directory '{}': {}", parent.display(), e);
+                eprintln!(
+                    "Error creating index cache directory '{}': {}",
+                    parent.display(),
+                    e
+                );
             }
             return;
         }
@@ -510,7 +530,12 @@ fn write_index_cache(items: &[LauncherItem], silent_mode: bool) {
         env_signature: current_env_signature(),
         items: items
             .iter()
-            .filter(|item| matches!(item.source, LauncherSource::StartMenu | LauncherSource::Path))
+            .filter(|item| {
+                matches!(
+                    item.source,
+                    LauncherSource::StartMenu | LauncherSource::Path
+                )
+            })
             .map(|item| CachedLauncherItem {
                 source: source_to_cache(item.source).to_string(),
                 label: item.label.clone(),
@@ -604,13 +629,20 @@ fn collect_path_items(
     }
 }
 
-pub fn load_launcher_items(config: &LauncherConfig, silent_mode: bool, force_reindex: bool) -> Vec<LauncherItem> {
+pub fn load_launcher_items(
+    config: &LauncherConfig,
+    silent_mode: bool,
+    force_reindex: bool,
+) -> Vec<LauncherItem> {
     let mut items: Vec<LauncherItem> = Vec::new();
     let mut seen_targets: HashSet<String> = HashSet::new();
     let blacklist = build_blacklist_set(config);
 
     if config.enable_history {
-        for target in read_history_targets().into_iter().take(config.history_max_items) {
+        for target in read_history_targets()
+            .into_iter()
+            .take(config.history_max_items)
+        {
             if is_blacklisted_command_name(&target, &blacklist) {
                 continue;
             }
@@ -664,8 +696,8 @@ pub fn load_launcher_items(config: &LauncherConfig, silent_mode: bool, force_rei
 #[cfg(test)]
 mod tests {
     use super::{
-        build_blacklist_set, is_blacklisted_command_name, parse_legacy_index_cache, source_from_cache,
-        stable_fnv1a_64, windowsapps_alias_display_label,
+        build_blacklist_set, is_blacklisted_command_name, parse_legacy_index_cache,
+        source_from_cache, stable_fnv1a_64, windowsapps_alias_display_label,
     };
     use crate::settings::RmenuConfig;
     use std::path::Path;
@@ -676,7 +708,10 @@ mod tests {
         let blacklist = build_blacklist_set(&cfg.launcher);
 
         assert!(is_blacklisted_command_name("powercfg", &blacklist));
-        assert!(is_blacklisted_command_name("C:/Windows/System32/powercfg.exe", &blacklist));
+        assert!(is_blacklisted_command_name(
+            "C:/Windows/System32/powercfg.exe",
+            &blacklist
+        ));
         assert!(!is_blacklisted_command_name("powershell", &blacklist));
     }
 
@@ -692,7 +727,8 @@ mod tests {
         let blacklist = build_blacklist_set(&cfg.launcher);
         let raw = "start\tCode\tC:/Code.exe\npath\tpowercfg\tC:/Windows/System32/powercfg.exe\n";
 
-        let parsed = parse_legacy_index_cache(raw, &cfg.launcher, &blacklist).expect("expected parsed items");
+        let parsed = parse_legacy_index_cache(raw, &cfg.launcher, &blacklist)
+            .expect("expected parsed items");
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].label, "Code");
     }

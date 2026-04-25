@@ -190,6 +190,16 @@ Modules can contribute:
 - input accessories,
 - controlled key hooks.
 
+Module conventions for v1:
+
+- standard local module directory: `modules/` relative to the current working directory;
+- examples shipped in this repository: `modules/calculator.rmod`, `modules/local-scripts.rmod`, `modules/shortcuts.rmod`;
+- module names should be lowercase kebab-case and stable (`local-scripts`, `shortcuts`);
+- commands should use `/module::command` namespacing;
+- capabilities must be minimal and explicitly declared;
+- `.rmod` is the preferred sharing format;
+- module `version` should use semver-like `major.minor.patch` strings and `api_version = 1` for this API generation.
+
 The core remains authoritative over UI, ranking, dedupe, state, execution policy and error isolation.
 
 Quick commands:
@@ -261,14 +271,40 @@ Output includes:
 - request/error/timeout/restart counters
 - recent host errors
 
+### Minimum performance targets
+
+Current v1 targets on a normal Windows development machine:
+
+| Metric | Target |
+| --- | ---: |
+| `startup_prepare_ms` with cache | <= 250 ms |
+| `startup_prepare_ms` with `--reindex` | <= 1000 ms |
+| `time_to_window_visible_ms` | <= 100 ms |
+| `time_to_input_ready_ms` | <= 100 ms |
+| `search_p95_ms` | <= 10 ms |
+| Provider global budget | <= configured `provider_total_budget_ms` |
+
+These are product guardrails, not hard realtime guarantees. Regressions should be investigated when repeated release-mode measurements exceed the target.
+
 ### Reproducible benchmark routine
 
 ```powershell
 cargo build --release
 1..5 | ForEach-Object { .\target\release\rmenu.exe --metrics }
+.\target\release\rmenu.exe --reindex --metrics
 .\target\release\rmenu.exe --debug-ranking pow
 .\target\release\rmenu.exe --debug-ranking code
 .\target\release\rmenu.exe --debug-ranking calc
+```
+
+Baseline measured during Phase 4 verification on a 1108-item dataset:
+
+```text
+startup_prepare_ms: 143
+startup_prepare_ms with --reindex: 567
+time_to_window_visible_ms: 30-31
+time_to_input_ready_ms: 36-37
+search_p95_ms: 4.271-4.276
 ```
 
 ---

@@ -8,7 +8,10 @@ fn normalize_for_match(value: &str, case_sensitive: bool) -> String {
 
 fn compact_alnum(value: &str, case_sensitive: bool) -> String {
     if case_sensitive {
-        value.chars().filter(|ch| ch.is_ascii_alphanumeric()).collect()
+        value
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .collect()
     } else {
         value
             .chars()
@@ -134,7 +137,12 @@ pub fn fuzzy_score(query: &str, candidate: &str, case_sensitive: bool) -> i64 {
     let query_compact = compact_alnum(&query_norm, true);
     let candidate_compact = compact_alnum(&candidate_norm, true);
 
-    fuzzy_score_core(&query_norm, &query_compact, &candidate_norm, &candidate_compact)
+    fuzzy_score_core(
+        &query_norm,
+        &query_compact,
+        &candidate_norm,
+        &candidate_compact,
+    )
 }
 
 #[cfg(test)]

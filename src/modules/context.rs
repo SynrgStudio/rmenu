@@ -1,4 +1,6 @@
-use super::types::{ModuleCommandDef, ModuleInputAccessory, ModuleItem, ModuleMode, ModuleProviderDef};
+use super::types::{
+    ModuleCommandDef, ModuleInputAccessory, ModuleItem, ModuleMode, ModuleProviderDef,
+};
 
 #[derive(Debug, Clone)]
 pub struct ModuleSnapshot {
@@ -76,15 +78,18 @@ impl ModuleCtx {
     }
 
     pub fn set_query(&mut self, text: impl Into<String>) {
-        self.action_requests.push(ModuleActionRequest::SetQuery(text.into()));
+        self.action_requests
+            .push(ModuleActionRequest::SetQuery(text.into()));
     }
 
     pub fn set_selection(&mut self, index: usize) {
-        self.action_requests.push(ModuleActionRequest::SetSelection(index));
+        self.action_requests
+            .push(ModuleActionRequest::SetSelection(index));
     }
 
     pub fn move_selection(&mut self, offset: isize) {
-        self.action_requests.push(ModuleActionRequest::MoveSelection(offset));
+        self.action_requests
+            .push(ModuleActionRequest::MoveSelection(offset));
     }
 
     pub fn submit(&mut self) {
@@ -96,27 +101,33 @@ impl ModuleCtx {
     }
 
     pub fn add_items(&mut self, items: Vec<ModuleItem>) {
-        self.action_requests.push(ModuleActionRequest::AddItems(items));
+        self.action_requests
+            .push(ModuleActionRequest::AddItems(items));
     }
 
     pub fn replace_items(&mut self, items: Vec<ModuleItem>) {
-        self.action_requests.push(ModuleActionRequest::ReplaceItems(items));
+        self.action_requests
+            .push(ModuleActionRequest::ReplaceItems(items));
     }
 
     pub fn set_input_accessory(&mut self, accessory: ModuleInputAccessory) {
-        self.action_requests.push(ModuleActionRequest::SetInputAccessory(accessory));
+        self.action_requests
+            .push(ModuleActionRequest::SetInputAccessory(accessory));
     }
 
     pub fn clear_input_accessory(&mut self) {
-        self.action_requests.push(ModuleActionRequest::ClearInputAccessory);
+        self.action_requests
+            .push(ModuleActionRequest::ClearInputAccessory);
     }
 
     pub fn register_command(&mut self, command: ModuleCommandDef) {
-        self.action_requests.push(ModuleActionRequest::RegisterCommand(command));
+        self.action_requests
+            .push(ModuleActionRequest::RegisterCommand(command));
     }
 
     pub fn register_provider(&mut self, provider: ModuleProviderDef) {
-        self.action_requests.push(ModuleActionRequest::RegisterProvider(provider));
+        self.action_requests
+            .push(ModuleActionRequest::RegisterProvider(provider));
     }
 
     pub fn take_action_requests(&mut self) -> Vec<ModuleActionRequest> {

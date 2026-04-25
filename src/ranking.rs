@@ -1,4 +1,6 @@
-use crate::app_state::{ensure_selection_visible, source_boost, AppState, LauncherItem, LauncherSource};
+use crate::app_state::{
+    ensure_selection_visible, source_boost, AppState, LauncherItem, LauncherSource,
+};
 use crate::fuzzy::{compact_lower_alnum, fuzzy_score, fuzzy_score_precomputed_lower};
 
 #[derive(Debug, Clone)]
@@ -28,7 +30,13 @@ pub fn source_name(source: LauncherSource) -> &'static str {
     }
 }
 
-fn fuzzy_best_score(item: &LauncherItem, query: &str, query_norm: &str, query_compact: &str, case_sensitive: bool) -> i64 {
+fn fuzzy_best_score(
+    item: &LauncherItem,
+    query: &str,
+    query_norm: &str,
+    query_compact: &str,
+    case_sensitive: bool,
+) -> i64 {
     if case_sensitive {
         let label_score = fuzzy_score(query, &item.label, true);
         if label_score >= STRONG_LABEL_MATCH_SCORE {
@@ -118,7 +126,6 @@ pub fn update_matching_items_with_dataset(
     app_state.matching_items = ranked.into_iter().map(|entry| entry.item).collect();
     ensure_selection_visible(app_state, max_visible_items);
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -31,7 +31,9 @@ pub struct ModuleItemCapabilities {
 
 impl Default for ModuleItemCapabilities {
     fn default() -> Self {
-        Self { quick_select_key: None }
+        Self {
+            quick_select_key: None,
+        }
     }
 }
 
