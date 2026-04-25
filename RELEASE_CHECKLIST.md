@@ -53,7 +53,7 @@ Package-only dry run for local artifact validation:
 Notes:
 
 - The script does not use `git add .` or `git add -A`; it stages exact changed paths after showing them for confirmation.
-- The script creates the GitHub Release directly with `gh`; the GitHub Actions workflow remains a reproducible fallback.
+- The script creates the GitHub Release directly with `gh`; the GitHub Actions workflow remains a manual reproducible fallback and is not triggered by release tags.
 - The script requires `gh auth login` before publishing.
 - `dist/` artifacts are uploaded to the GitHub Release, not committed.
 
@@ -200,18 +200,19 @@ The local release script and GitHub Actions workflow both generate checksums aut
 
 ## 6. GitHub Actions validation
 
-The release workflow is validated in two stages:
+The GitHub Actions workflow is a manual fallback only:
 
-1. Local validation:
-   - docs reviewed;
-   - commands and paths checked;
-   - `cargo fmt`, `cargo test`, `cargo check`, `cargo build --release` pass.
-2. GitHub validation:
-   - workflow runs on `windows-latest`;
-   - artifacts upload successfully;
-   - tag releases attach zip and checksums correctly.
+```text
+GitHub -> Actions -> Release -> Run workflow
+```
 
-Full workflow validation can only be completed on GitHub.
+It is not triggered by release tags. The local release script is the publishing path and uploads the zip/checksums directly with `gh release create`.
+
+GitHub validation checks:
+
+- workflow runs on `windows-latest` when manually dispatched;
+- artifacts upload successfully;
+- generated zip and checksums match the documented artifact layout.
 
 ---
 
@@ -225,21 +226,15 @@ Preferred publication path:
 
 The script handles commit, branch push, remote tag/release creation, and asset upload after confirmation.
 
-Manual/GitHub Actions fallback:
+Manual fallback:
 
 - [ ] Ensure changelog entry is final.
 - [ ] Commit and push release changes.
-- [ ] Create and push a version tag:
-
-```powershell
-git tag v<VERSION>
-git push origin v<VERSION>
-```
-
-- [ ] Confirm GitHub Actions release workflow completes.
+- [ ] Run `.\scripts\release-local.ps1` to create the release and upload local assets.
+- [ ] Optionally run GitHub Actions manually as a reproducibility check.
 - [ ] Confirm GitHub Release includes:
   - `rmenu-v<VERSION>-windows-x64.zip`;
-  - checksum artifact or `checksums.txt`;
+  - `SHA256SUMS.txt`;
   - release notes.
 - [ ] Download artifact from GitHub Release.
 - [ ] Verify checksum.
