@@ -48,7 +48,7 @@ Current test result:
 
 Phase 3 hardening passes added targeted tests and diagnostics improvements, then `cargo fmt`, `cargo test`, `cargo check`, and `cargo run --bin rmenu -- --modules-debug` were run successfully.
 
-Phase 4 verification is complete. Automated tests, diagnostics, stdin/script mode, `--reindex --metrics`, and minimum performance targets are validated/documented. Phase 5 is now the active closure phase, with only manual base launcher UX validation without modules still pending.
+Phase 4 verification is complete. Automated tests, diagnostics, stdin/script mode, `--reindex --metrics`, and minimum performance targets are validated/documented. Phase 5 product/core polish is complete after manual base launcher UX validation without external modules.
 
 Latest `/start-cont Completa Phase 3` checkpoint: added `AUTONOMOUS_EXECUTION.md`, expanded host/client hardening tests, validated request timeout kill behavior, host request/response payload handling, hot reload/debounce, reload health/backoff reset, provider/command/input-accessory capability allow/deny, disabled modules, deterministic ordering, module-host invalid-state behavior, external-host error isolation, key capability routing, auto-disable thresholds, and restart backoff. Phase 3 is complete.
 
@@ -388,9 +388,7 @@ Pending tests:
 
 ### Phase 5 — Product/core polish
 
-Pending:
-
-- validate base UX without modules.
+Status: complete.
 
 Completed/updated:
 
@@ -399,7 +397,8 @@ Completed/updated:
 - documented v1 module location/naming/capability/command/sharing/versioning conventions in `README.md`;
 - defined and documented minimum performance targets in `README.md`;
 - validated performance against the current 1108-item baseline;
-- added tests confirming valid module config parsing and invalid module config fallback to safe defaults.
+- added tests confirming valid module config parsing and invalid module config fallback to safe defaults;
+- manually validated base launcher UX without external modules from `D:\rmenu\rmenu-empty`, with `external_descriptors: 0`, `running_hosts: 0`, builtin modules only, and launcher behavior reported as working perfectly.
 
 ### Phase 6 — Freeze declaration
 
@@ -407,16 +406,13 @@ Do not start yet.
 
 Blockers:
 
-- need remaining Phase 5 manual base launcher UX validation without modules.
+- none from Phase 4/5. Phase 6 freeze preparation may start.
 
 ---
 
 ## Recommended next step
 
-Phase 4 is complete. Continue Phase 5 product/core polish:
-
-- manually validate base launcher UX without modules;
-- prepare for Phase 6 freeze only after the remaining Phase 5 manual blocker is resolved.
+Phase 4 and Phase 5 are complete. Next step: start Phase 6 freeze declaration preparation.
 
 ---
 

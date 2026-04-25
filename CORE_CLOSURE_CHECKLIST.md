@@ -277,11 +277,11 @@ Phase 4 is closed with automated tests, local diagnostics, stdin/script validati
 
 # Phase 5 — Product/core polish
 
-Status: active; only manual base-launcher UX validation remains.
+Status: complete.
 
-Pending:
+Completed:
 
-- [ ] Validate base launcher UX without modules.
+- [x] Validate base launcher UX without modules.
 - [x] Confirm no fuzzy/ranking regression.
 - [x] Confirm friendly app labels and executable-name search.
 - [x] Confirm ShellExecuteW launch and controlled fallback.
@@ -299,7 +299,7 @@ Do not start yet.
 
 Blockers:
 
-- Phase 5 still needs manual base launcher UX validation without modules.
+- none from Phase 4/5. Phase 6 freeze preparation may start.
 
 ## Final checklist before freeze
 
@@ -308,9 +308,9 @@ Blockers:
 - [ ] README reflects current architecture.
 - [ ] Duplicate/historical docs are ordered.
 - [ ] Project metadata is clean.
-- [ ] Three real modules work without touching core.
-- [ ] Module frictions are classified.
-- [ ] Blocking bugs are fixed.
+- [x] Three real modules work without touching core.
+- [x] Module frictions are classified.
+- [x] Blocking bugs are fixed.
 - [x] Tests/verifications are green.
 - [x] Minimum performance is validated.
 - [ ] Future core-change policy is written.
