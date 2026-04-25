@@ -27,9 +27,9 @@ use context::{ModuleActionRequest, ModuleCtx, ModuleSnapshot};
 use hooks::RuntimeModule;
 use state::ModuleRuntimeState;
 use types::{
-    BadgeKind, InputAccessoryKind, ModuleAction, ModuleCommandDef, ModuleDescriptor, ModuleInputAccessory,
-    ModuleItem, ModuleItemCapabilities, ModuleItemDecorations, ModuleKeyEvent, ModuleMode, ModuleProviderDef,
-    MODULE_API_VERSION,
+    BadgeKind, InputAccessoryKind, ModuleAction, ModuleCommandDef, ModuleDescriptor,
+    ModuleInputAccessory, ModuleItem, ModuleItemCapabilities, ModuleItemDecorations,
+    ModuleKeyEvent, ModuleMode, ModuleProviderDef, MODULE_API_VERSION,
 };
 
 const MAX_RECENT_HOST_ERRORS: usize = 5;
@@ -208,7 +208,8 @@ impl ModuleRuntime {
         let now = Instant::now();
 
         if let Some(last_check) = self.last_hot_reload_check {
-            if now.duration_since(last_check) < Duration::from_millis(HOT_RELOAD_CHECK_INTERVAL_MS) {
+            if now.duration_since(last_check) < Duration::from_millis(HOT_RELOAD_CHECK_INTERVAL_MS)
+            {
                 return false;
             }
         }
@@ -222,7 +223,9 @@ impl ModuleRuntime {
                 }
 
                 if let Some(last_reload) = self.last_hot_reload_at {
-                    if now.duration_since(last_reload) < Duration::from_millis(HOT_RELOAD_DEBOUNCE_MS) {
+                    if now.duration_since(last_reload)
+                        < Duration::from_millis(HOT_RELOAD_DEBOUNCE_MS)
+                    {
                         return false;
                     }
                 }
@@ -250,12 +253,17 @@ impl ModuleRuntime {
             self.shutdown_external_hosts();
             self.host_capabilities.clear();
             self.host_health.clear();
+            self.last_restart_attempt.clear();
             self.external_descriptors = descriptors;
 
             for descriptor in &self.external_descriptors {
                 self.host_capabilities.insert(
                     descriptor.name.clone(),
-                    descriptor.capabilities.iter().map(|cap| cap.to_ascii_lowercase()).collect(),
+                    descriptor
+                        .capabilities
+                        .iter()
+                        .map(|cap| cap.to_ascii_lowercase())
+                        .collect(),
                 );
                 self.host_health.insert(
                     descriptor.name.clone(),
@@ -295,7 +303,11 @@ impl ModuleRuntime {
             .collect::<Vec<_>>();
 
         for module_name in &removed {
-            if let Some(index) = self.external_hosts.iter().position(|h| h.module_name == *module_name) {
+            if let Some(index) = self
+                .external_hosts
+                .iter()
+                .position(|h| h.module_name == *module_name)
+            {
                 let mut host = self.external_hosts.remove(index);
                 host.shutdown();
             }
@@ -319,18 +331,31 @@ impl ModuleRuntime {
         self.external_descriptors = descriptors;
 
         for name in changed_or_new {
-            if let Some(index) = self.external_hosts.iter().position(|h| h.module_name == name) {
+            if let Some(index) = self
+                .external_hosts
+                .iter()
+                .position(|h| h.module_name == name)
+            {
                 let mut host = self.external_hosts.remove(index);
                 host.shutdown();
             }
 
-            let Some(descriptor) = self.external_descriptors.iter().find(|d| d.name == name).cloned() else {
+            let Some(descriptor) = self
+                .external_descriptors
+                .iter()
+                .find(|d| d.name == name)
+                .cloned()
+            else {
                 continue;
             };
 
             self.host_capabilities.insert(
                 descriptor.name.clone(),
-                descriptor.capabilities.iter().map(|cap| cap.to_ascii_lowercase()).collect(),
+                descriptor
+                    .capabilities
+                    .iter()
+                    .map(|cap| cap.to_ascii_lowercase())
+                    .collect(),
             );
 
             if !descriptor.enabled {
@@ -361,7 +386,10 @@ impl ModuleRuntime {
                 }
                 Err(err) => {
                     if !silent_mode {
-                        eprintln!("module host reload error for '{}': {err:?}", descriptor.name);
+                        eprintln!(
+                            "module host reload error for '{}': {err:?}",
+                            descriptor.name
+                        );
                     }
                     self.record_host_error(
                         &descriptor.name,
@@ -384,7 +412,10 @@ impl ModuleRuntime {
                 self.state.active_input_accessory = Some((
                     "runtime".to_string(),
                     ModuleInputAccessory {
-                        text: format!("modules reloaded: {} external", self.external_descriptors.len()),
+                        text: format!(
+                            "modules reloaded: {} external",
+                            self.external_descriptors.len()
+                        ),
                         kind: InputAccessoryKind::Info,
                         priority: 100,
                     },
@@ -479,7 +510,13 @@ impl ModuleRuntime {
                         &mut self.state,
                         self.host_capabilities.get(&host.module_name),
                     );
-                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                    telemetry_events.push((
+                        host.module_name.clone(),
+                        started.elapsed().as_millis(),
+                        false,
+                        false,
+                        None,
+                    ));
                 }
                 Err(err) => {
                     let is_timeout = matches!(err, HostClientError::Timeout(_));
@@ -550,7 +587,13 @@ impl ModuleRuntime {
                         &mut self.state,
                         self.host_capabilities.get(&host.module_name),
                     );
-                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                    telemetry_events.push((
+                        host.module_name.clone(),
+                        started.elapsed().as_millis(),
+                        false,
+                        false,
+                        None,
+                    ));
                 }
                 Err(err) => {
                     let is_timeout = matches!(err, HostClientError::Timeout(_));
@@ -611,11 +654,6 @@ impl ModuleRuntime {
 
         for host in &mut self.external_hosts {
             if providers_started.elapsed().as_millis() > self.policy.provider_total_budget_ms {
-                let message = format!(
-                    "provider_budget_exceeded total_budget_ms={} stopping remaining hosts",
-                    self.policy.provider_total_budget_ms
-                );
-                telemetry_events.push((host.module_name.clone(), 0, true, false, Some(message)));
                 break;
             }
 
@@ -630,13 +668,18 @@ impl ModuleRuntime {
             let started = Instant::now();
             let snapshot = ipc_snapshot_from_app_state(app_state, false);
             match host.provide_items(&query, snapshot) {
-                Ok(mut items) => {
-                    if items.len() > self.policy.max_items_per_provider_host {
-                        items.truncate(self.policy.max_items_per_provider_host);
-                    }
-                    let sanitized = sanitize_ipc_items(items, &host.module_name, app_state.silent_mode);
+                Ok(items) => {
+                    let items = cap_ipc_items(items, self.policy.max_items_per_provider_host);
+                    let sanitized =
+                        sanitize_ipc_items(items, &host.module_name, app_state.silent_mode);
                     provided.extend(sanitized.into_iter().map(module_item_from_ipc_item));
-                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                    telemetry_events.push((
+                        host.module_name.clone(),
+                        started.elapsed().as_millis(),
+                        false,
+                        false,
+                        None,
+                    ));
                 }
                 Err(err) => {
                     let is_timeout = matches!(err, HostClientError::Timeout(_));
@@ -690,7 +733,13 @@ impl ModuleRuntime {
         }
     }
 
-    pub fn dispatch_command(&mut self, app_state: &mut AppState, command: &str, args: &[String], silent_mode: bool) {
+    pub fn dispatch_command(
+        &mut self,
+        app_state: &mut AppState,
+        command: &str,
+        args: &[String],
+        silent_mode: bool,
+    ) {
         if self.runtime_command(command, silent_mode) {
             return;
         }
@@ -738,7 +787,13 @@ impl ModuleRuntime {
                         &mut self.state,
                         self.host_capabilities.get(&host.module_name),
                     );
-                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                    telemetry_events.push((
+                        host.module_name.clone(),
+                        started.elapsed().as_millis(),
+                        false,
+                        false,
+                        None,
+                    ));
                 }
                 Err(err) => {
                     if !silent_mode {
@@ -775,8 +830,15 @@ impl ModuleRuntime {
         }
     }
 
-    pub fn decorate_items(&mut self, app_state: &AppState, items: Vec<LauncherItem>) -> Vec<LauncherItem> {
-        let mut module_items = items.into_iter().map(module_item_from_launcher_item).collect::<Vec<_>>();
+    pub fn decorate_items(
+        &mut self,
+        app_state: &AppState,
+        items: Vec<LauncherItem>,
+    ) -> Vec<LauncherItem> {
+        let mut module_items = items
+            .into_iter()
+            .map(module_item_from_launcher_item)
+            .collect::<Vec<_>>();
 
         for module in &mut self.modules {
             let module_name = module.name().to_string();
@@ -784,7 +846,13 @@ impl ModuleRuntime {
             let mut ctx = ModuleCtx::new(module_name, snapshot);
             module_items = module.decorate_items(module_items, &mut ctx);
             let mut shadow_state = app_state.clone();
-            Self::apply_ctx_requests(module.name(), &mut ctx, &mut shadow_state, &mut self.state, None);
+            Self::apply_ctx_requests(
+                module.name(),
+                &mut ctx,
+                &mut shadow_state,
+                &mut self.state,
+                None,
+            );
         }
 
         let mut ipc_items = module_items
@@ -808,8 +876,15 @@ impl ModuleRuntime {
             let snapshot = ipc_snapshot_from_app_state(app_state, false);
             match host.decorate_items(ipc_items.clone(), snapshot) {
                 Ok(next_items) => {
-                    ipc_items = sanitize_ipc_items(next_items, &host.module_name, app_state.silent_mode);
-                    telemetry_events.push((host.module_name.clone(), started.elapsed().as_millis(), false, false, None));
+                    ipc_items =
+                        sanitize_ipc_items(next_items, &host.module_name, app_state.silent_mode);
+                    telemetry_events.push((
+                        host.module_name.clone(),
+                        started.elapsed().as_millis(),
+                        false,
+                        false,
+                        None,
+                    ));
                 }
                 Err(err) => {
                     let is_timeout = matches!(err, HostClientError::Timeout(_));
@@ -865,8 +940,20 @@ impl ModuleRuntime {
         out.push_str("rmenu modules debug\n");
         out.push_str(&format!("- api_version: {}\n", self.api_version()));
         out.push_str(&format!("- builtin_modules: {}\n", self.modules.len()));
-        out.push_str(&format!("- external_descriptors: {}\n", self.external_descriptors.len()));
+        out.push_str(&format!(
+            "- external_descriptors: {}\n",
+            self.external_descriptors.len()
+        ));
         out.push_str(&format!("- running_hosts: {}\n", self.external_hosts.len()));
+        out.push_str("- policy:\n");
+        out.push_str(&format!(
+            "  provider_total_budget_ms={} provider_timeout_ms={} max_items_per_provider_host={} host_restart_backoff_ms={} max_ipc_payload_bytes={}\n",
+            self.policy.provider_total_budget_ms,
+            self.policy.provider_timeout_ms,
+            self.policy.max_items_per_provider_host,
+            self.policy.host_restart_backoff_ms,
+            self.policy.max_ipc_payload_bytes
+        ));
 
         if self.state.loaded_modules.is_empty() {
             out.push_str("- loaded_modules: none\n");
@@ -876,6 +963,38 @@ impl ModuleRuntime {
                 out.push_str(&format!(
                     "  - {}@{} enabled={}\n",
                     module.name, module.version, module.enabled
+                ));
+            }
+        }
+
+        if self.host_capabilities.is_empty() {
+            out.push_str("- host_capabilities: none\n");
+        } else {
+            out.push_str("- host_capabilities:\n");
+            for (name, capabilities) in &self.host_capabilities {
+                let caps = if capabilities.is_empty() {
+                    "none".to_string()
+                } else {
+                    capabilities.iter().cloned().collect::<Vec<_>>().join(", ")
+                };
+                out.push_str(&format!("  - {}: {}\n", name, caps));
+            }
+        }
+
+        if self.host_health.is_empty() {
+            out.push_str("- host_health: none\n");
+        } else {
+            out.push_str("- host_health:\n");
+            for (name, health) in &self.host_health {
+                let status = match health.status {
+                    ExternalModuleStatus::Loaded => "loaded",
+                    ExternalModuleStatus::Degraded => "degraded",
+                    ExternalModuleStatus::Disabled => "disabled",
+                    ExternalModuleStatus::Unloaded => "unloaded",
+                };
+                out.push_str(&format!(
+                    "  - {} status={} consecutive_errors={} consecutive_timeouts={}\n",
+                    name, status, health.consecutive_errors, health.consecutive_timeouts
                 ));
             }
         }
@@ -924,7 +1043,11 @@ impl ModuleRuntime {
         out
     }
 
-    fn resolve_command_route(&self, command: &str, silent_mode: bool) -> Option<ResolvedCommandRoute> {
+    fn resolve_command_route(
+        &self,
+        command: &str,
+        silent_mode: bool,
+    ) -> Option<ResolvedCommandRoute> {
         let normalized = normalize_command_name(command);
         if normalized.is_empty() {
             if !silent_mode {
@@ -989,7 +1112,10 @@ impl ModuleRuntime {
                 continue;
             }
 
-            owners.entry(alias).or_default().insert(module_name.to_string());
+            owners
+                .entry(alias)
+                .or_default()
+                .insert(module_name.to_string());
         }
 
         owners
@@ -999,8 +1125,7 @@ impl ModuleRuntime {
     }
 
     fn find_module_name(&self, module_name: &str) -> Option<String> {
-        self
-            .modules
+        self.modules
             .iter()
             .find(|module| module.name().eq_ignore_ascii_case(module_name))
             .map(|module| module.name().to_string())
@@ -1025,6 +1150,16 @@ impl ModuleRuntime {
             .unwrap_or(false)
     }
 
+    fn record_host_started(&mut self, module_name: &str, latency_ms: u128) {
+        let entry = self.telemetry_entry_mut(module_name);
+        entry.request_count = entry.request_count.saturating_add(1);
+        entry.total_latency_ms = entry.total_latency_ms.saturating_add(latency_ms);
+        entry.max_latency_ms = entry.max_latency_ms.max(latency_ms);
+
+        let health = self.host_health.entry(module_name.to_string()).or_default();
+        health.status = ExternalModuleStatus::Loaded;
+    }
+
     fn record_host_success(&mut self, module_name: &str, latency_ms: u128) {
         let entry = self.telemetry_entry_mut(module_name);
         entry.request_count = entry.request_count.saturating_add(1);
@@ -1037,7 +1172,13 @@ impl ModuleRuntime {
         health.status = ExternalModuleStatus::Loaded;
     }
 
-    fn record_host_error(&mut self, module_name: &str, latency_ms: u128, is_timeout: bool, error_message: String) {
+    fn record_host_error(
+        &mut self,
+        module_name: &str,
+        latency_ms: u128,
+        is_timeout: bool,
+        error_message: String,
+    ) {
         let entry = self.telemetry_entry_mut(module_name);
         entry.request_count = entry.request_count.saturating_add(1);
         entry.error_count = entry.error_count.saturating_add(1);
@@ -1107,7 +1248,7 @@ impl ModuleRuntime {
             ) {
                 Ok(host) => {
                     self.external_hosts.push(host);
-                    self.record_host_success(&descriptor.name, 0);
+                    self.record_host_started(&descriptor.name, 0);
                 }
                 Err(err) => {
                     if !silent_mode {
@@ -1125,20 +1266,27 @@ impl ModuleRuntime {
     }
 
     fn restart_external_host(&mut self, module_name: &str, silent_mode: bool) {
+        let now = Instant::now();
+        if let Some(last_attempt) = self.last_restart_attempt.get(module_name) {
+            if now.duration_since(*last_attempt).as_millis()
+                < self.policy.host_restart_backoff_ms as u128
+            {
+                return;
+            }
+        }
+        self.last_restart_attempt
+            .insert(module_name.to_string(), now);
+
         {
             let entry = self.telemetry_entry_mut(module_name);
             entry.restart_count = entry.restart_count.saturating_add(1);
         }
 
-        let now = Instant::now();
-        if let Some(last_attempt) = self.last_restart_attempt.get(module_name) {
-            if now.duration_since(*last_attempt).as_millis() < self.policy.host_restart_backoff_ms as u128 {
-                return;
-            }
-        }
-        self.last_restart_attempt.insert(module_name.to_string(), now);
-
-        if let Some(index) = self.external_hosts.iter().position(|host| host.module_name == module_name) {
+        if let Some(index) = self
+            .external_hosts
+            .iter()
+            .position(|host| host.module_name == module_name)
+        {
             let mut host = self.external_hosts.remove(index);
             host.shutdown();
         }
@@ -1164,13 +1312,18 @@ impl ModuleRuntime {
             ) {
                 Ok(host) => {
                     self.external_hosts.push(host);
-                    self.record_host_success(module_name, 0);
+                    self.record_host_started(module_name, 0);
                 }
                 Err(err) => {
                     if !silent_mode {
                         eprintln!("module host restart error for '{}': {err:?}", module_name);
                     }
-                    self.record_host_error(module_name, 0, false, format!("host_restart_error: {err:?}"));
+                    self.record_host_error(
+                        module_name,
+                        0,
+                        false,
+                        format!("host_restart_error: {err:?}"),
+                    );
                 }
             }
         }
@@ -1212,7 +1365,13 @@ impl ModuleRuntime {
                 }
             }
         }
-        Self::apply_ctx_requests(module_name, &mut ctx, app_state, state, allowed_capabilities);
+        Self::apply_ctx_requests(
+            module_name,
+            &mut ctx,
+            app_state,
+            state,
+            allowed_capabilities,
+        );
     }
 
     fn apply_ctx_requests(
@@ -1255,7 +1414,11 @@ impl ModuleRuntime {
 
         app_state.current_input = view.query;
         app_state.selected_index = view.selected_index;
-        app_state.matching_items = view.items.into_iter().map(launcher_item_from_module_item).collect();
+        app_state.matching_items = view
+            .items
+            .into_iter()
+            .map(launcher_item_from_module_item)
+            .collect();
     }
 }
 
@@ -1401,7 +1564,12 @@ fn snapshot_from_app_state(app_state: &AppState) -> ModuleSnapshot {
 }
 
 fn ipc_snapshot_from_app_state(app_state: &AppState, include_items: bool) -> IpcSnapshot {
-    let mode = if app_state.launcher_mode { "launcher" } else { "stdin" }.to_string();
+    let mode = if app_state.launcher_mode {
+        "launcher"
+    } else {
+        "stdin"
+    }
+    .to_string();
     let items = if include_items {
         app_state
             .matching_items
@@ -1500,6 +1668,13 @@ fn module_item_to_ipc_item(item: ModuleItem) -> IpcItem {
     }
 }
 
+fn cap_ipc_items(mut items: Vec<IpcItem>, max_items: usize) -> Vec<IpcItem> {
+    if items.len() > max_items {
+        items.truncate(max_items);
+    }
+    items
+}
+
 fn sanitize_ipc_items(items: Vec<IpcItem>, module_name: &str, silent_mode: bool) -> Vec<IpcItem> {
     items
         .into_iter()
@@ -1545,7 +1720,11 @@ fn sanitize_ipc_item(item: IpcItem) -> Result<IpcItem, String> {
     })
 }
 
-fn sanitize_required_single_line(value: String, max_len: usize, field_name: &str) -> Result<String, String> {
+fn sanitize_required_single_line(
+    value: String,
+    max_len: usize,
+    field_name: &str,
+) -> Result<String, String> {
     let sanitized = sanitize_single_line_string(value, max_len);
     if sanitized.is_empty() {
         return Err(format!("{field_name} is required"));
@@ -1709,7 +1888,10 @@ pub fn input_accessory_text(accessory: &ModuleInputAccessory) -> String {
     accessory.text.clone()
 }
 
-pub fn quick_select_badge_text(capabilities: &ModuleItemCapabilities, decorations: &ModuleItemDecorations) -> Option<String> {
+pub fn quick_select_badge_text(
+    capabilities: &ModuleItemCapabilities,
+    decorations: &ModuleItemDecorations,
+) -> Option<String> {
     if let Some(key) = &capabilities.quick_select_key {
         return Some(key.clone());
     }
@@ -1797,18 +1979,35 @@ impl RuntimeModule for BuiltinQueryProviderModule {
 #[cfg(test)]
 mod tests {
     use super::{
-        dedupe_launcher_items_by_priority, parse_namespaced_command, sanitize_ipc_item, sanitize_ipc_items,
-        BuiltinLifecycleModule, DedupeSourcePriority, ExternalModuleStatus, HostTelemetry, IpcAction, ModuleRuntime,
-        ResolvedCommandRoute, IPC_ITEM_MAX_BADGE_LEN, IPC_ITEM_MAX_HINT_LEN, IPC_ITEM_MAX_ID_LEN,
-        IPC_ITEM_MAX_SOURCE_LEN, IPC_ITEM_MAX_SUBTITLE_LEN, IPC_ITEM_MAX_TARGET_LEN,
-        IPC_ITEM_MAX_TITLE_LEN,
+        cap_ipc_items, dedupe_launcher_items_by_priority, parse_namespaced_command,
+        sanitize_ipc_item, sanitize_ipc_items, BuiltinLifecycleModule, DedupeSourcePriority,
+        ExternalModuleStatus, HostTelemetry, IpcAction, ModuleRuntime, ResolvedCommandRoute,
+        HOT_RELOAD_CHECK_INTERVAL_MS, IPC_ITEM_MAX_BADGE_LEN, IPC_ITEM_MAX_HINT_LEN,
+        IPC_ITEM_MAX_ID_LEN, IPC_ITEM_MAX_SOURCE_LEN, IPC_ITEM_MAX_SUBTITLE_LEN,
+        IPC_ITEM_MAX_TARGET_LEN, IPC_ITEM_MAX_TITLE_LEN, MAX_CONSECUTIVE_TIMEOUTS_PER_MODULE,
     };
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::Command;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
     use crate::app_state::{AppState, LauncherItem, LauncherSource};
     use crate::modules::ipc::{IpcInputAccessory, IpcItem};
     use crate::modules::types::{
-        BadgeKind, InputAccessoryKind, ModuleCommandDef, ModuleInputAccessory, ModuleItemCapabilities,
-        ModuleItemDecorations,
+        BadgeKind, InputAccessoryKind, ModuleCommandDef, ModuleInputAccessory,
+        ModuleItemCapabilities, ModuleItemDecorations,
     };
+
+    fn temp_modules_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time must be valid")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("rmenu-runtime-test-{name}-{nonce}"));
+        fs::create_dir_all(&dir).expect("create temp modules dir");
+        dir
+    }
 
     #[test]
     fn sanitize_ipc_item_rejects_missing_required_fields() {
@@ -1854,12 +2053,24 @@ mod tests {
 
         assert_eq!(sanitized.id, "item id");
         assert_eq!(sanitized.title, "title value");
-        assert_eq!(sanitized.subtitle.as_deref().map(str::len), Some(IPC_ITEM_MAX_SUBTITLE_LEN));
+        assert_eq!(
+            sanitized.subtitle.as_deref().map(str::len),
+            Some(IPC_ITEM_MAX_SUBTITLE_LEN)
+        );
         assert_eq!(sanitized.source.as_deref(), Some("module_source"));
-        assert_eq!(sanitized.target.as_deref().map(str::len), Some(IPC_ITEM_MAX_TARGET_LEN));
+        assert_eq!(
+            sanitized.target.as_deref().map(str::len),
+            Some(IPC_ITEM_MAX_TARGET_LEN)
+        );
         assert_eq!(sanitized.quick_select_key.as_deref(), Some("2"));
-        assert_eq!(sanitized.badge.as_deref().map(str::len), Some(IPC_ITEM_MAX_BADGE_LEN));
-        assert_eq!(sanitized.hint.as_deref().map(str::len), Some(IPC_ITEM_MAX_HINT_LEN));
+        assert_eq!(
+            sanitized.badge.as_deref().map(str::len),
+            Some(IPC_ITEM_MAX_BADGE_LEN)
+        );
+        assert_eq!(
+            sanitized.hint.as_deref().map(str::len),
+            Some(IPC_ITEM_MAX_HINT_LEN)
+        );
     }
 
     #[test]
@@ -1883,6 +2094,28 @@ mod tests {
         assert_eq!(sanitized.quick_select_key, None);
         assert_eq!(sanitized.badge, None);
         assert_eq!(sanitized.hint, None);
+    }
+
+    #[test]
+    fn provider_item_cap_truncates_items_before_sanitization() {
+        let items = (0..5)
+            .map(|index| IpcItem {
+                id: format!("item-{index}"),
+                title: format!("Item {index}"),
+                subtitle: None,
+                source: None,
+                target: None,
+                quick_select_key: None,
+                badge: None,
+                hint: None,
+            })
+            .collect::<Vec<_>>();
+
+        let capped = cap_ipc_items(items, 3);
+
+        assert_eq!(capped.len(), 3);
+        assert_eq!(capped[0].id, "item-0");
+        assert_eq!(capped[2].id, "item-2");
     }
 
     #[test]
@@ -1942,14 +2175,25 @@ mod tests {
         let sanitized = sanitize_ipc_item(raw).expect("item should sanitize");
         assert_eq!(sanitized.id.len(), IPC_ITEM_MAX_ID_LEN);
         assert_eq!(sanitized.title.len(), IPC_ITEM_MAX_TITLE_LEN);
-        assert_eq!(sanitized.source.as_deref().map(str::len), Some(IPC_ITEM_MAX_SOURCE_LEN));
+        assert_eq!(
+            sanitized.source.as_deref().map(str::len),
+            Some(IPC_ITEM_MAX_SOURCE_LEN)
+        );
     }
 
     #[test]
     fn dedupe_launcher_items_respects_priority_order() {
         let core = vec![
-            LauncherItem::new("Core A".to_string(), "same-target".to_string(), LauncherSource::Direct),
-            LauncherItem::new("Core B".to_string(), "core-only".to_string(), LauncherSource::Direct),
+            LauncherItem::new(
+                "Core A".to_string(),
+                "same-target".to_string(),
+                LauncherSource::Direct,
+            ),
+            LauncherItem::new(
+                "Core B".to_string(),
+                "core-only".to_string(),
+                LauncherSource::Direct,
+            ),
         ];
         let provider = vec![
             LauncherItem::new(
@@ -1979,34 +2223,42 @@ mod tests {
 
     #[test]
     fn plain_text_keys_are_not_dispatched_to_modules() {
-        assert!(!super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
-            key: "a".to_string(),
-            ctrl: false,
-            alt: false,
-            shift: false,
-            meta: false,
-        }));
-        assert!(!super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
-            key: "1".to_string(),
-            ctrl: false,
-            alt: false,
-            shift: false,
-            meta: false,
-        }));
-        assert!(super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
-            key: "b".to_string(),
-            ctrl: true,
-            alt: false,
-            shift: false,
-            meta: false,
-        }));
-        assert!(super::should_dispatch_module_key_event(&super::ModuleKeyEvent {
-            key: "enter".to_string(),
-            ctrl: false,
-            alt: false,
-            shift: false,
-            meta: false,
-        }));
+        assert!(!super::should_dispatch_module_key_event(
+            &super::ModuleKeyEvent {
+                key: "a".to_string(),
+                ctrl: false,
+                alt: false,
+                shift: false,
+                meta: false,
+            }
+        ));
+        assert!(!super::should_dispatch_module_key_event(
+            &super::ModuleKeyEvent {
+                key: "1".to_string(),
+                ctrl: false,
+                alt: false,
+                shift: false,
+                meta: false,
+            }
+        ));
+        assert!(super::should_dispatch_module_key_event(
+            &super::ModuleKeyEvent {
+                key: "b".to_string(),
+                ctrl: true,
+                alt: false,
+                shift: false,
+                meta: false,
+            }
+        ));
+        assert!(super::should_dispatch_module_key_event(
+            &super::ModuleKeyEvent {
+                key: "enter".to_string(),
+                ctrl: false,
+                alt: false,
+                shift: false,
+                meta: false,
+            }
+        ));
     }
 
     #[test]
@@ -2042,19 +2294,31 @@ mod tests {
                 title: "build".to_string(),
                 subtitle: Some("modules/local-scripts/scripts/build.ps1".to_string()),
                 source: Some("local-scripts".to_string()),
-                target: Some("powershell.exe -NoProfile -File modules/local-scripts/scripts/build.ps1".to_string()),
+                target: Some(
+                    "powershell.exe -NoProfile -File modules/local-scripts/scripts/build.ps1"
+                        .to_string(),
+                ),
                 quick_select_key: None,
                 badge: Some("ps1".to_string()),
                 hint: Some("modules/local-scripts/scripts/build.ps1".to_string()),
             }],
         }];
 
-        ModuleRuntime::apply_ipc_actions("local-scripts", actions, &mut app_state, &mut state, None);
+        ModuleRuntime::apply_ipc_actions(
+            "local-scripts",
+            actions,
+            &mut app_state,
+            &mut state,
+            None,
+        );
 
         assert!(state.items_replaced_in_cycle);
         assert_eq!(app_state.matching_items.len(), 1);
         assert_eq!(app_state.matching_items[0].label, "build");
-        assert_eq!(app_state.matching_items[0].trailing_badge.as_deref(), Some("ps1"));
+        assert_eq!(
+            app_state.matching_items[0].trailing_badge.as_deref(),
+            Some("ps1")
+        );
     }
 
     #[test]
@@ -2157,6 +2421,569 @@ mod tests {
         let handled = runtime.runtime_command("modules.telemetry.reset", true);
         assert!(handled);
         assert!(runtime.host_telemetry.is_empty());
+    }
+
+    #[test]
+    fn register_provider_action_requires_provider_capability() {
+        let mut app_state = AppState {
+            silent_mode: true,
+            ..Default::default()
+        };
+        let mut state = super::ModuleRuntimeState::default();
+        let mut ctx = super::ModuleCtx::new(
+            "provider.module",
+            super::snapshot_from_app_state(&app_state),
+        );
+        ctx.register_provider(super::ModuleProviderDef {
+            name: "p".to_string(),
+            priority: 0,
+        });
+        let allowed = BTreeSet::new();
+
+        ModuleRuntime::apply_ctx_requests(
+            "provider.module",
+            &mut ctx,
+            &mut app_state,
+            &mut state,
+            Some(&allowed),
+        );
+
+        assert!(state.registered_providers.is_empty());
+
+        let mut ctx = super::ModuleCtx::new(
+            "provider.module",
+            super::snapshot_from_app_state(&app_state),
+        );
+        ctx.register_provider(super::ModuleProviderDef {
+            name: "p".to_string(),
+            priority: 0,
+        });
+        let mut allowed = BTreeSet::new();
+        allowed.insert("providers".to_string());
+
+        ModuleRuntime::apply_ctx_requests(
+            "provider.module",
+            &mut ctx,
+            &mut app_state,
+            &mut state,
+            Some(&allowed),
+        );
+
+        assert!(state
+            .registered_providers
+            .contains_key("provider.module::p"));
+    }
+
+    #[test]
+    fn register_command_action_requires_command_capability() {
+        let mut app_state = AppState {
+            silent_mode: true,
+            ..Default::default()
+        };
+        let mut state = super::ModuleRuntimeState::default();
+        let mut ctx =
+            super::ModuleCtx::new("command.module", super::snapshot_from_app_state(&app_state));
+        ctx.register_command(ModuleCommandDef {
+            name: "run".to_string(),
+            description: None,
+        });
+        let allowed = BTreeSet::new();
+
+        ModuleRuntime::apply_ctx_requests(
+            "command.module",
+            &mut ctx,
+            &mut app_state,
+            &mut state,
+            Some(&allowed),
+        );
+
+        assert!(state.registered_commands.is_empty());
+
+        let mut ctx =
+            super::ModuleCtx::new("command.module", super::snapshot_from_app_state(&app_state));
+        ctx.register_command(ModuleCommandDef {
+            name: "run".to_string(),
+            description: None,
+        });
+        let mut allowed = BTreeSet::new();
+        allowed.insert("commands".to_string());
+
+        ModuleRuntime::apply_ctx_requests(
+            "command.module",
+            &mut ctx,
+            &mut app_state,
+            &mut state,
+            Some(&allowed),
+        );
+
+        assert!(state
+            .registered_commands
+            .contains_key("command.module::run"));
+    }
+
+    #[test]
+    fn full_reload_resets_health_and_restart_backoff_counters() {
+        let dir = temp_modules_dir("reload-reset");
+        fs::write(
+            dir.join("disabled.rmod"),
+            r#"#!rmod/v1
+name: disabled-module
+version: 0.1.0
+api_version: 1
+kind: script
+enabled: false
+capabilities: providers
+
+---module.js---
+export default function createModule() {}
+"#,
+        )
+        .expect("write disabled module");
+
+        let mut runtime = ModuleRuntime::new();
+        runtime.record_host_error("disabled-module", 1, true, "timeout".to_string());
+        runtime
+            .last_restart_attempt
+            .insert("disabled-module".to_string(), Instant::now());
+
+        runtime.load_external_descriptors(&dir, true);
+
+        let health = runtime
+            .host_health
+            .get("disabled-module")
+            .expect("health exists");
+        assert_eq!(health.consecutive_errors, 0);
+        assert_eq!(health.consecutive_timeouts, 0);
+        assert!(runtime.last_restart_attempt.is_empty());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn ipc_actions_enforce_declared_capabilities() {
+        let mut app_state = AppState {
+            silent_mode: true,
+            ..Default::default()
+        };
+        let mut state = super::ModuleRuntimeState::default();
+        let actions = vec![IpcAction::SetInputAccessory(IpcInputAccessory {
+            text: "denied".to_string(),
+            kind: Some("error".to_string()),
+            priority: Some(1),
+        })];
+        let allowed = BTreeSet::new();
+
+        ModuleRuntime::apply_ipc_actions(
+            "restricted.module",
+            actions,
+            &mut app_state,
+            &mut state,
+            Some(&allowed),
+        );
+
+        assert!(state.active_input_accessory.is_none());
+
+        let mut allowed = BTreeSet::new();
+        allowed.insert("input-accessory".to_string());
+        let actions = vec![IpcAction::SetInputAccessory(IpcInputAccessory {
+            text: "allowed".to_string(),
+            kind: Some("success".to_string()),
+            priority: Some(1),
+        })];
+
+        ModuleRuntime::apply_ipc_actions(
+            "allowed.module",
+            actions,
+            &mut app_state,
+            &mut state,
+            Some(&allowed),
+        );
+
+        assert_eq!(
+            state
+                .active_input_accessory
+                .as_ref()
+                .map(|(_, accessory)| accessory.text.as_str()),
+            Some("allowed")
+        );
+    }
+
+    fn node_available() -> bool {
+        Command::new("node")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn write_disabled_rmod(dir: &std::path::Path, name: &str, version: &str) {
+        write_external_rmod(
+            dir,
+            name,
+            version,
+            false,
+            "providers",
+            "export default function createModule() { return {}; }",
+        );
+    }
+
+    fn write_external_rmod(
+        dir: &std::path::Path,
+        name: &str,
+        version: &str,
+        enabled: bool,
+        capabilities: &str,
+        module_js: &str,
+    ) {
+        fs::write(
+            dir.join(format!("{name}.rmod")),
+            format!(
+                "#!rmod/v1\nname: {name}\nversion: {version}\napi_version: 1\nkind: script\nenabled: {enabled}\ncapabilities: {capabilities}\n\n---module.js---\n{module_js}\n"
+            ),
+        )
+        .expect("write external rmod");
+    }
+
+    #[test]
+    fn hot_reload_detects_changes_and_debounces_follow_up_reload() {
+        let dir = temp_modules_dir("hot-reload");
+        write_disabled_rmod(&dir, "hot-module", "0.1.0");
+
+        let mut runtime = ModuleRuntime::new();
+        runtime.load_external_descriptors(&dir, true);
+        assert_eq!(runtime.external_descriptors[0].version, "0.1.0");
+
+        write_disabled_rmod(&dir, "hot-module", "0.2.0");
+        runtime.last_hot_reload_check =
+            Some(Instant::now() - Duration::from_millis(HOT_RELOAD_CHECK_INTERVAL_MS + 1));
+        assert!(runtime.poll_hot_reload(true));
+        assert_eq!(runtime.external_descriptors[0].version, "0.2.0");
+
+        write_disabled_rmod(&dir, "hot-module", "0.3.0");
+        runtime.last_hot_reload_check =
+            Some(Instant::now() - Duration::from_millis(HOT_RELOAD_CHECK_INTERVAL_MS + 1));
+        assert!(!runtime.poll_hot_reload(true));
+        assert_eq!(runtime.external_descriptors[0].version, "0.2.0");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn external_provider_errors_do_not_break_healthy_modules() {
+        if !node_available() {
+            return;
+        }
+
+        let dir = temp_modules_dir("error-isolation");
+        write_external_rmod(
+            &dir,
+            "healthy-module",
+            "0.1.0",
+            true,
+            "providers",
+            "export default function createModule() { return { provideItems() { return [{ id: 'ok', title: 'Healthy', target: 'healthy.exe' }]; } }; }",
+        );
+        write_external_rmod(
+            &dir,
+            "broken-module",
+            "0.1.0",
+            true,
+            "providers",
+            "export default function createModule() { return { provideItems() { throw new Error('boom'); } }; }",
+        );
+
+        let mut runtime = ModuleRuntime::new();
+        runtime.configure_policy(super::ModuleRuntimePolicy {
+            provider_timeout_ms: 200,
+            host_restart_backoff_ms: 0,
+            provider_total_budget_ms: 1_000,
+            ..Default::default()
+        });
+        runtime.load_external_descriptors(&dir, true);
+
+        let items = runtime.collect_provider_items(&AppState {
+            silent_mode: true,
+            ..Default::default()
+        });
+
+        assert!(items.iter().any(|item| item.label == "Healthy"));
+        assert_eq!(
+            runtime
+                .host_health
+                .get("broken-module")
+                .map(|health| health.status),
+            Some(ExternalModuleStatus::Loaded)
+        );
+        assert!(
+            runtime
+                .host_telemetry
+                .get("broken-module")
+                .map(|telemetry| telemetry.error_count)
+                .unwrap_or_default()
+                >= 1
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn external_key_hooks_require_keys_capability() {
+        if !node_available() {
+            return;
+        }
+
+        let dir = temp_modules_dir("key-capability");
+        let key_module = "export default function createModule() { return { onKey(event, ctx) { ctx.setInputAccessory({ text: 'key:' + event.key, kind: 'info', priority: 1 }); } }; }";
+        write_external_rmod(
+            &dir,
+            "no-keys-module",
+            "0.1.0",
+            true,
+            "input-accessory",
+            key_module,
+        );
+        write_external_rmod(
+            &dir,
+            "keys-module",
+            "0.1.0",
+            true,
+            "keys,input-accessory",
+            key_module,
+        );
+
+        let mut runtime = ModuleRuntime::new();
+        runtime.configure_policy(super::ModuleRuntimePolicy {
+            provider_timeout_ms: 200,
+            ..Default::default()
+        });
+        runtime.load_external_descriptors(&dir, true);
+
+        let mut app_state = AppState {
+            silent_mode: true,
+            ..Default::default()
+        };
+        runtime.run_on_key(
+            &mut app_state,
+            &super::ModuleKeyEvent {
+                key: "b".to_string(),
+                ctrl: true,
+                alt: false,
+                shift: false,
+                meta: false,
+            },
+        );
+
+        assert_eq!(
+            runtime
+                .active_input_accessory()
+                .map(|accessory| accessory.text),
+            Some("key:b".to_string())
+        );
+        assert_eq!(
+            runtime
+                .host_telemetry
+                .get("no-keys-module")
+                .map(|telemetry| telemetry.request_count),
+            Some(1)
+        );
+        assert_eq!(
+            runtime
+                .host_telemetry
+                .get("keys-module")
+                .map(|telemetry| telemetry.request_count),
+            Some(2)
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn external_timeouts_auto_disable_after_threshold() {
+        if !node_available() {
+            return;
+        }
+
+        let dir = temp_modules_dir("auto-disable");
+        write_external_rmod(
+            &dir,
+            "slow-module",
+            "0.1.0",
+            true,
+            "providers",
+            "export default function createModule() { return { async provideItems() { await new Promise(() => {}); } }; }",
+        );
+
+        let mut runtime = ModuleRuntime::new();
+        runtime.configure_policy(super::ModuleRuntimePolicy {
+            provider_timeout_ms: 100,
+            host_restart_backoff_ms: 0,
+            provider_total_budget_ms: 1_000,
+            ..Default::default()
+        });
+        runtime.load_external_descriptors(&dir, true);
+        let app_state = AppState {
+            silent_mode: true,
+            ..Default::default()
+        };
+
+        for _ in 0..MAX_CONSECUTIVE_TIMEOUTS_PER_MODULE {
+            let _ = runtime.collect_provider_items(&app_state);
+        }
+
+        assert_eq!(
+            runtime
+                .host_health
+                .get("slow-module")
+                .map(|health| health.status),
+            Some(ExternalModuleStatus::Disabled)
+        );
+        assert!(runtime
+            .external_hosts
+            .iter()
+            .all(|host| host.module_name != "slow-module"));
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn external_restart_backoff_suppresses_repeated_restart_attempts() {
+        if !node_available() {
+            return;
+        }
+
+        let dir = temp_modules_dir("restart-backoff");
+        write_external_rmod(
+            &dir,
+            "slow-module",
+            "0.1.0",
+            true,
+            "providers",
+            "export default function createModule() { return { async provideItems() { await new Promise(() => {}); } }; }",
+        );
+
+        let mut runtime = ModuleRuntime::new();
+        runtime.configure_policy(super::ModuleRuntimePolicy {
+            provider_timeout_ms: 100,
+            host_restart_backoff_ms: 60_000,
+            provider_total_budget_ms: 1_000,
+            ..Default::default()
+        });
+        runtime.load_external_descriptors(&dir, true);
+        let app_state = AppState {
+            silent_mode: true,
+            ..Default::default()
+        };
+
+        let _ = runtime.collect_provider_items(&app_state);
+        let _ = runtime.collect_provider_items(&app_state);
+
+        assert_eq!(
+            runtime
+                .host_telemetry
+                .get("slow-module")
+                .map(|telemetry| telemetry.restart_count),
+            Some(1)
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn disabled_external_modules_are_discovered_but_not_loaded() {
+        let dir = temp_modules_dir("disabled");
+        fs::write(
+            dir.join("disabled.rmod"),
+            r#"#!rmod/v1
+name: disabled-module
+version: 0.1.0
+api_version: 1
+kind: script
+enabled: false
+capabilities: providers
+
+---module.js---
+export default function createModule() {}
+"#,
+        )
+        .expect("write disabled module");
+
+        let mut runtime = ModuleRuntime::new();
+        runtime.load_external_descriptors(&dir, true);
+
+        assert_eq!(runtime.external_module_count(), 1);
+        assert!(runtime.external_hosts.is_empty());
+        assert_eq!(
+            runtime
+                .host_health
+                .get("disabled-module")
+                .map(|health| health.status),
+            Some(ExternalModuleStatus::Disabled)
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn modules_debug_report_exposes_policy_health_telemetry_and_capabilities() {
+        let mut runtime = ModuleRuntime::new();
+        runtime.configure_policy(super::ModuleRuntimePolicy {
+            provider_total_budget_ms: 7,
+            provider_timeout_ms: 11,
+            max_items_per_provider_host: 3,
+            host_restart_backoff_ms: 13,
+            max_ipc_payload_bytes: 17,
+            ..Default::default()
+        });
+        runtime.host_capabilities.insert(
+            "mod.host".to_string(),
+            ["providers".to_string(), "input-accessory".to_string()]
+                .into_iter()
+                .collect(),
+        );
+        runtime.record_host_error("mod.host", 5, true, "timeout".to_string());
+
+        let report = runtime.modules_debug_report();
+
+        assert!(report.contains("- policy:"));
+        assert!(report.contains("provider_total_budget_ms=7"));
+        assert!(report.contains("- host_capabilities:"));
+        assert!(report.contains("mod.host: input-accessory, providers"));
+        assert!(report.contains("- host_health:"));
+        assert!(report.contains("status=degraded"));
+        assert!(report.contains("- host_telemetry:"));
+        assert!(report.contains("recent_errors:"));
+    }
+
+    #[test]
+    fn disabled_host_is_not_restarted() {
+        let mut runtime = ModuleRuntime::new();
+        runtime.record_host_error("mod.host", 1, true, "timeout-1".to_string());
+        runtime.record_host_error("mod.host", 1, true, "timeout-2".to_string());
+        runtime.record_host_error("mod.host", 1, true, "timeout-3".to_string());
+
+        runtime.restart_external_host("mod.host", true);
+
+        assert!(runtime.host_is_disabled("mod.host"));
+        assert!(runtime.external_hosts.is_empty());
+    }
+
+    #[test]
+    fn restart_backoff_counts_only_actual_attempts() {
+        let mut runtime = ModuleRuntime::new();
+        runtime.configure_policy(super::ModuleRuntimePolicy {
+            host_restart_backoff_ms: 60_000,
+            ..Default::default()
+        });
+
+        runtime.restart_external_host("missing.host", true);
+        runtime.restart_external_host("missing.host", true);
+
+        let restart_count = runtime
+            .host_telemetry
+            .get("missing.host")
+            .map(|telemetry| telemetry.restart_count)
+            .unwrap_or_default();
+        assert_eq!(restart_count, 1);
     }
 
     #[test]

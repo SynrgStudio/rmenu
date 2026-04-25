@@ -6,8 +6,8 @@ use std::thread;
 use std::time::Duration;
 
 use super::ipc::{
-    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem, IpcKeyEvent,
-    IpcSnapshot, ModuleInitPayload,
+    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem,
+    IpcKeyEvent, IpcSnapshot, ModuleInitPayload,
 };
 use super::types::ModuleDescriptor;
 
@@ -77,7 +77,9 @@ impl ExternalModuleHost {
         match host.send_request(HostRequestPayload::Initialize(init))? {
             HostResponsePayload::Ack => {}
             HostResponsePayload::Error { message, .. } => {
-                return Err(HostClientError::Protocol(format!("initialize failed: {message}")))
+                return Err(HostClientError::Protocol(format!(
+                    "initialize failed: {message}"
+                )))
             }
             other => {
                 return Err(HostClientError::Protocol(format!(
@@ -89,7 +91,9 @@ impl ExternalModuleHost {
         match host.send_request(HostRequestPayload::OnLoad { snapshot: None })? {
             HostResponsePayload::Ack => {}
             HostResponsePayload::Error { message, .. } => {
-                return Err(HostClientError::Protocol(format!("onLoad failed: {message}")))
+                return Err(HostClientError::Protocol(format!(
+                    "onLoad failed: {message}"
+                )))
             }
             other => {
                 return Err(HostClientError::Protocol(format!(
@@ -101,7 +105,11 @@ impl ExternalModuleHost {
         Ok(host)
     }
 
-    pub fn on_query_change(&mut self, query: &str, snapshot: IpcSnapshot) -> Result<Vec<IpcAction>, HostClientError> {
+    pub fn on_query_change(
+        &mut self,
+        query: &str,
+        snapshot: IpcSnapshot,
+    ) -> Result<Vec<IpcAction>, HostClientError> {
         actions_from_response(
             self.send_request(HostRequestPayload::OnQueryChange {
                 query: query.to_string(),
@@ -111,11 +119,22 @@ impl ExternalModuleHost {
         )
     }
 
-    pub fn on_key(&mut self, event: IpcKeyEvent, snapshot: IpcSnapshot) -> Result<Vec<IpcAction>, HostClientError> {
-        actions_from_response(self.send_request(HostRequestPayload::OnKey { event, snapshot })?, "OnKey")
+    pub fn on_key(
+        &mut self,
+        event: IpcKeyEvent,
+        snapshot: IpcSnapshot,
+    ) -> Result<Vec<IpcAction>, HostClientError> {
+        actions_from_response(
+            self.send_request(HostRequestPayload::OnKey { event, snapshot })?,
+            "OnKey",
+        )
     }
 
-    pub fn provide_items(&mut self, query: &str, snapshot: IpcSnapshot) -> Result<Vec<IpcItem>, HostClientError> {
+    pub fn provide_items(
+        &mut self,
+        query: &str,
+        snapshot: IpcSnapshot,
+    ) -> Result<Vec<IpcItem>, HostClientError> {
         match self.send_request(HostRequestPayload::ProvideItems {
             query: query.to_string(),
             snapshot,
@@ -128,7 +147,11 @@ impl ExternalModuleHost {
         }
     }
 
-    pub fn decorate_items(&mut self, items: Vec<IpcItem>, snapshot: IpcSnapshot) -> Result<Vec<IpcItem>, HostClientError> {
+    pub fn decorate_items(
+        &mut self,
+        items: Vec<IpcItem>,
+        snapshot: IpcSnapshot,
+    ) -> Result<Vec<IpcItem>, HostClientError> {
         match self.send_request(HostRequestPayload::DecorateItems { items, snapshot })? {
             HostResponsePayload::DecorateItemsResult { items } => Ok(items),
             HostResponsePayload::Error { message, .. } => Err(HostClientError::Protocol(message)),
@@ -138,7 +161,12 @@ impl ExternalModuleHost {
         }
     }
 
-    pub fn on_command(&mut self, command: &str, args: &[String], snapshot: IpcSnapshot) -> Result<Vec<IpcAction>, HostClientError> {
+    pub fn on_command(
+        &mut self,
+        command: &str,
+        args: &[String],
+        snapshot: IpcSnapshot,
+    ) -> Result<Vec<IpcAction>, HostClientError> {
         actions_from_response(
             self.send_request(HostRequestPayload::OnCommand {
                 command: command.to_string(),
@@ -155,16 +183,21 @@ impl ExternalModuleHost {
         self.force_kill();
     }
 
-    fn send_request(&mut self, payload: HostRequestPayload) -> Result<HostResponsePayload, HostClientError> {
+    fn send_request(
+        &mut self,
+        payload: HostRequestPayload,
+    ) -> Result<HostResponsePayload, HostClientError> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
 
         let request = HostRequest { id, payload };
-        let encoded = serde_json::to_string(&request).map_err(|err| HostClientError::Protocol(err.to_string()))?;
+        let encoded = serde_json::to_string(&request)
+            .map_err(|err| HostClientError::Protocol(err.to_string()))?;
         if encoded.len() > self.max_ipc_payload_bytes {
             return Err(HostClientError::Protocol(format!(
                 "request exceeds max_ipc_payload_bytes ({} > {})",
-                encoded.len(), self.max_ipc_payload_bytes
+                encoded.len(),
+                self.max_ipc_payload_bytes
             )));
         }
 
@@ -186,7 +219,9 @@ impl ExternalModuleHost {
             }
             Err(RecvTimeoutError::Disconnected) => {
                 self.force_kill();
-                return Err(HostClientError::Protocol("module-host response channel disconnected".to_string()));
+                return Err(HostClientError::Protocol(
+                    "module-host response channel disconnected".to_string(),
+                ));
             }
         };
 
@@ -220,30 +255,40 @@ fn actions_from_response(
     }
 }
 
-fn spawn_response_reader(stdout: ChildStdout, max_ipc_payload_bytes: usize) -> Receiver<HostResponse> {
+fn spawn_response_reader(
+    stdout: ChildStdout,
+    max_ipc_payload_bytes: usize,
+) -> Receiver<HostResponse> {
+    spawn_response_reader_from_reader(BufReader::new(stdout), max_ipc_payload_bytes)
+}
+
+fn spawn_response_reader_from_reader<R>(
+    mut reader: R,
+    max_ipc_payload_bytes: usize,
+) -> Receiver<HostResponse>
+where
+    R: BufRead + Send + 'static,
+{
     let (tx, rx) = mpsc::channel();
 
-    thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        loop {
-            let mut line = String::new();
-            let read = match reader.read_line(&mut line) {
-                Ok(read) => read,
-                Err(_) => break,
-            };
+    thread::spawn(move || loop {
+        let mut line = String::new();
+        let read = match reader.read_line(&mut line) {
+            Ok(read) => read,
+            Err(_) => break,
+        };
 
-            if read == 0 {
+        if read == 0 {
+            break;
+        }
+
+        if line.len() > max_ipc_payload_bytes {
+            break;
+        }
+
+        if let Ok(response) = serde_json::from_str::<HostResponse>(line.trim()) {
+            if tx.send(response).is_err() {
                 break;
-            }
-
-            if line.len() > max_ipc_payload_bytes {
-                break;
-            }
-
-            if let Ok(response) = serde_json::from_str::<HostResponse>(line.trim()) {
-                if tx.send(response).is_err() {
-                    break;
-                }
             }
         }
     });
@@ -251,8 +296,108 @@ fn spawn_response_reader(stdout: ChildStdout, max_ipc_payload_bytes: usize) -> R
     rx
 }
 
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+    use std::sync::mpsc::RecvTimeoutError;
+    use std::time::Duration;
+
+    use std::process::{Command, Stdio};
+    use std::sync::mpsc;
+
+    use super::{spawn_response_reader_from_reader, ExternalModuleHost, HostClientError};
+    use crate::modules::ipc::{HostRequestPayload, IpcSnapshot};
+
+    #[cfg(windows)]
+    fn test_host(response_timeout_ms: u64, max_ipc_payload_bytes: usize) -> ExternalModuleHost {
+        let mut child = Command::new("powershell.exe")
+            .args(["-NoProfile", "-Command", "Start-Sleep -Seconds 60"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn test child");
+        let stdin = child.stdin.take().expect("test child stdin");
+        let (tx, response_rx) = mpsc::channel();
+        std::mem::forget(tx);
+
+        ExternalModuleHost {
+            module_name: "timeout-test".to_string(),
+            child,
+            stdin,
+            response_rx,
+            next_id: 1,
+            response_timeout_ms,
+            max_ipc_payload_bytes,
+        }
+    }
+
+    fn snapshot() -> IpcSnapshot {
+        IpcSnapshot {
+            query: String::new(),
+            items: Vec::new(),
+            selected_index: 0,
+            mode: "launcher".to_string(),
+        }
+    }
+
+    #[test]
+    fn response_reader_ignores_invalid_json_and_continues() {
+        let input = b"not-json\n{\"id\":2,\"payload\":{\"type\":\"Ack\"}}\n".to_vec();
+        let rx = spawn_response_reader_from_reader(Cursor::new(input), 1024);
+
+        let response = rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("valid response should arrive");
+        assert_eq!(response.id, 2);
+    }
+
+    #[test]
+    fn response_reader_stops_on_payload_limit_exceeded() {
+        let input = b"01234567890123456789\n{\"id\":2,\"payload\":{\"type\":\"Ack\"}}\n".to_vec();
+        let rx = spawn_response_reader_from_reader(Cursor::new(input), 8);
+
+        let err = rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect_err("oversized payload should close reader");
+        assert_eq!(err, RecvTimeoutError::Disconnected);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn send_request_times_out_and_kills_unresponsive_host() {
+        let mut host = test_host(10, 1024);
+
+        let err = host
+            .send_request(HostRequestPayload::Ping)
+            .expect_err("unresponsive host should time out");
+
+        assert!(matches!(err, HostClientError::Timeout(_)));
+        assert!(host.child.try_wait().expect("child status").is_some());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn send_request_rejects_oversized_request_before_waiting_for_response() {
+        let mut host = test_host(1_000, 16);
+
+        let err = host
+            .send_request(HostRequestPayload::OnQueryChange {
+                query: "long-query".repeat(16),
+                snapshot: snapshot(),
+            })
+            .expect_err("oversized request should fail");
+
+        assert!(
+            matches!(err, HostClientError::Protocol(message) if message.contains("request exceeds max_ipc_payload_bytes"))
+        );
+        host.force_kill();
+    }
+}
+
 fn module_host_binary_path() -> Result<PathBuf, HostClientError> {
-    let current_exe = std::env::current_exe().map_err(|err| HostClientError::Io(err.to_string()))?;
+    let current_exe =
+        std::env::current_exe().map_err(|err| HostClientError::Io(err.to_string()))?;
     let exe_name = current_exe
         .file_name()
         .and_then(|value| value.to_str())
@@ -264,5 +409,20 @@ fn module_host_binary_path() -> Result<PathBuf, HostClientError> {
         "rmenu-module-host"
     };
 
-    Ok(current_exe.with_file_name(host_name))
+    let sibling = current_exe.with_file_name(host_name);
+    if sibling.exists() {
+        return Ok(sibling);
+    }
+
+    let parent_sibling = current_exe
+        .parent()
+        .and_then(|parent| parent.parent())
+        .map(|parent| parent.join(host_name));
+    if let Some(path) = parent_sibling {
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    Ok(sibling)
 }

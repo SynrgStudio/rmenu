@@ -209,23 +209,23 @@ Known frictions:
 
 Pending:
 
-- [ ] Confirm each external module runs isolated from the core.
-- [ ] Confirm request timeout works.
-- [ ] Confirm hung hosts are killed or degraded correctly.
-- [ ] Confirm auto-restart respects backoff.
-- [ ] Confirm auto-disable after thresholds.
-- [ ] Confirm successful reload resets relevant counters.
-- [ ] Confirm one module's errors do not break others.
-- [ ] Confirm `--modules-debug` exposes state, errors, telemetry, and capabilities.
-- [ ] Confirm mixed discovery of directory modules and `.rmod` files.
-- [ ] Confirm clear errors for invalid `.rmod` and `module.toml`.
-- [ ] Confirm disabled modules are not loaded.
-- [ ] Confirm deterministic priority.
-- [ ] Confirm hot reload and debounce behavior.
-- [ ] Confirm capability enforcement for providers, commands, input accessory, and keys.
-- [ ] Confirm provider budgets, timeouts, item caps, sanitization, dedupe, and command collisions.
-- [ ] Confirm UI primitive rendering for badges, hints, subtitles, input accessory, quick select, and narrow widths.
-- [ ] Confirm IPC payload limits and invalid payload handling.
+- [x] Confirm each external module runs isolated from the core.
+- [x] Confirm request timeout works.
+- [x] Confirm hung hosts are killed or degraded correctly.
+- [x] Confirm auto-restart respects backoff.
+- [x] Confirm auto-disable after thresholds.
+- [x] Confirm successful reload resets relevant counters.
+- [x] Confirm one module's errors do not break others.
+- [x] Confirm `--modules-debug` exposes state, errors, telemetry, policy, health, and capabilities.
+- [x] Confirm mixed discovery of directory modules and `.rmod` files.
+- [x] Confirm clear errors for invalid `.rmod` and `module.toml`.
+- [x] Confirm disabled modules are not loaded.
+- [x] Confirm deterministic priority.
+- [x] Confirm hot reload and debounce behavior.
+- [x] Confirm capability enforcement for providers, commands, input accessory, and keys.
+- [x] Confirm provider budgets, timeouts, item caps, sanitization, dedupe, and command collisions.
+- [x] Confirm UI primitive rendering for badges, hints, subtitles, input accessory, quick select, and narrow widths.
+- [x] Confirm IPC payload limits and invalid payload handling.
 
 ---
 
@@ -233,24 +233,24 @@ Pending:
 
 ## 4.1 Automated tests to add
 
-- [ ] Valid/invalid `.rmod` parser tests.
+- [x] Valid/invalid `.rmod` parser tests.
 - [x] Duplicate/missing block tests.
-- [ ] Valid/invalid `module.toml` tests.
+- [x] Valid/invalid `module.toml` tests.
 - [x] Mixed loader tests.
-- [ ] Capability allow/deny tests.
-- [ ] Provider timeout and item cap tests.
-- [ ] Dedupe tests.
-- [ ] Command namespace/collision tests.
-- [ ] IPC payload limit tests.
-- [ ] Hot reload tests.
-- [ ] Host restart/backoff tests.
-- [ ] Auto-disable tests.
+- [x] Capability allow/deny tests.
+- [x] Provider timeout and item cap tests.
+- [x] Dedupe tests.
+- [x] Command namespace/collision tests.
+- [x] IPC payload limit tests.
+- [x] Hot reload tests.
+- [x] Host restart/backoff tests.
+- [x] Auto-disable tests.
 - [x] Duplicate quick-select tests.
 - [x] Input accessory priority/kind tests.
 
 ## 4.2 Local verification commands
 
-- [ ] `cargo fmt`
+- [x] `cargo fmt`
 - [x] `cargo check`
 - [x] `cargo test`
 - [ ] `cargo clippy` if adopted by the project flow.

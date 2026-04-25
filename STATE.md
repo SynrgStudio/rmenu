@@ -42,9 +42,13 @@ cargo run --bin rmenu -- --modules-debug
 Current test result:
 
 ```text
-45 tests passed
+72 tests passed
 0 failed
 ```
+
+Phase 3 hardening passes added targeted tests and diagnostics improvements, then `cargo fmt`, `cargo test`, `cargo check`, and `cargo run --bin rmenu -- --modules-debug` were run successfully.
+
+Latest `/start-cont Completa Phase 3` checkpoint: added `AUTONOMOUS_EXECUTION.md`, expanded host/client hardening tests, validated request timeout kill behavior, host request/response payload handling, hot reload/debounce, reload health/backoff reset, provider/command/input-accessory capability allow/deny, disabled modules, deterministic ordering, module-host invalid-state behavior, external-host error isolation, key capability routing, auto-disable thresholds, and restart backoff. Phase 3 is complete.
 
 After translating root documentation and updating `build.rs`, `cargo check` was run again successfully.
 
@@ -317,31 +321,39 @@ Known frictions:
 
 Pending validation/hardening:
 
-- real isolation per external module;
-- timeout per request;
-- hung host kill/degrade;
-- auto-restart with backoff;
-- auto-disable after thresholds;
-- reload counter reset;
-- module errors do not break other modules;
-- sufficient `--modules-debug` output.
+- Phase 3 checklist is complete.
+- Remaining work moves to Phase 4 verification, Phase 5 polish/performance/manual UX checks, and Phase 6 freeze preparation.
+
+Latest `/start-cont Completa Phase 3` completed the external-host fixture coverage needed to close Phase 3: error isolation, key capability routing, timeout/kill behavior, restart backoff, auto-disable thresholds, and worker payload limits are now covered and green.
+
+Completed in latest Phase 3 passes:
+
+- `--modules-debug` now exposes policy, capabilities, health, telemetry, and recent errors;
+- provider total-budget exhaustion no longer records an error against an innocent later host that was skipped due to global budget;
+- restart telemetry now counts actual restart attempts after backoff, not every suppressed failure;
+- input accessory capability allow/deny path has direct test coverage;
+- provider item cap is covered by direct test coverage;
+- provider and command registration capability allow/deny paths have direct test coverage;
+- disabled external modules are discovered but not loaded;
+- disabled hosts are not restarted;
+- descriptor ordering by priority then name has direct test coverage;
+- hot reload detection and debounce behavior have direct test coverage;
+- successful reload resets health/backoff counters;
+- host request timeout kills an unresponsive child process;
+- oversized host requests fail before waiting for a response;
+- host response reader ignores invalid JSON and stops on oversized payloads;
+- module-host payload env parsing and unloaded request errors have direct test coverage;
+- invalid `.rmod` loader errors are covered;
+- valid/invalid `module.toml` parser behavior has direct test coverage.
 
 ### Phase 4 — Tests and verification
 
-Existing tests: 45.
+Existing tests: 72 total across `rmenu` and `rmenu-module-host` test binaries.
 
-Covered by current tests includes: `.rmod` parser basics, duplicate/missing blocks, quoted executable target parsing, mixed loader, dedupe, command collisions, quick-select duplicate behavior, input accessory kind/priority mapping, host health disable after timeouts, runtime module commands, external `ReplaceItems` action applying to visible items, external `SetQuery` action updating input, and key-hook dispatch filtering for plain text input.
+Covered by current tests includes: `.rmod` parser basics, duplicate/missing blocks, invalid `.rmod` loader error, valid/invalid `module.toml`, quoted executable target parsing, mixed loader, deterministic module ordering, disabled modules not loaded, hot reload/debounce, reload health/backoff reset, external provider error isolation, external key capability routing, external timeout auto-disable, external restart backoff, dedupe, command collisions, provider item cap, quick-select duplicate behavior, input accessory kind/priority mapping, provider/command/input accessory capability allow/deny, host health disable after timeouts, host request timeout with child kill, oversized host request rejection, disabled host no-restart behavior, restart backoff attempt accounting, modules debug report contents, runtime module commands, external `ReplaceItems` action applying to visible items, external `SetQuery` action updating input, key-hook dispatch filtering for plain text input, host response invalid JSON tolerance, host request/response payload limit handling, module-host worker response payload limit handling, module-host payload env parsing, unloaded request errors, and shutdown state cleanup.
 
 Pending tests:
 
-- valid/invalid `module.toml`;
-- allow/deny capabilities;
-- provider timeout;
-- provider item cap;
-- hot reload;
-- host restart/backoff;
-- broader auto-disable scenarios;
-- payload limits;
 - more external host action paths.
 
 ### Phase 5 — Product/core polish
@@ -369,7 +381,13 @@ Blockers:
 
 ## Recommended next step
 
-Phase 2 now has three real modules validated. Move next to Phase 3 hardening plus targeted tests.
+Phase 3 is complete. Move next to Phase 4 verification cleanup and Phase 5 product/core polish:
+
+- add remaining external host action path tests where useful;
+- run/manual-check launcher mode and stdin/script mode;
+- validate `--metrics`, `--debug-ranking <query>`, and performance targets;
+- review `config_example.ini` and `[Modules]` docs;
+- prepare for Phase 6 freeze only after Phase 4/5 blockers are resolved.
 
 ---
 
@@ -381,6 +399,8 @@ Non-visual validation:
 cargo check
 cargo test
 ```
+
+Latest result: 72 passed, 0 failed.
 
 Release build:
 

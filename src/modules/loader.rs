@@ -12,7 +12,9 @@ pub enum ModuleLoadError {
     Rmod(String),
 }
 
-pub fn discover_module_descriptors(modules_dir: &Path) -> Result<Vec<ModuleDescriptor>, ModuleLoadError> {
+pub fn discover_module_descriptors(
+    modules_dir: &Path,
+) -> Result<Vec<ModuleDescriptor>, ModuleLoadError> {
     if !modules_dir.exists() {
         return Ok(Vec::new());
     }
@@ -40,13 +42,19 @@ pub fn discover_module_descriptors(modules_dir: &Path) -> Result<Vec<ModuleDescr
             .unwrap_or(false);
 
         if is_rmod {
-            let raw = fs::read_to_string(&path).map_err(|err| ModuleLoadError::Io(err.to_string()))?;
-            let descriptor = parse_rmod(&raw, path.to_string_lossy().to_string()).map_err(map_rmod_err)?;
+            let raw =
+                fs::read_to_string(&path).map_err(|err| ModuleLoadError::Io(err.to_string()))?;
+            let descriptor =
+                parse_rmod(&raw, path.to_string_lossy().to_string()).map_err(map_rmod_err)?;
             descriptors.push(descriptor);
         }
     }
 
-    descriptors.sort_by(|a, b| a.priority.cmp(&b.priority).then_with(|| a.name.cmp(&b.name)));
+    descriptors.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.name.cmp(&b.name))
+    });
     Ok(descriptors)
 }
 
@@ -63,7 +71,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use super::discover_module_descriptors;
+    use super::{discover_module_descriptors, ModuleLoadError};
 
     fn test_dir(name: &str) -> PathBuf {
         let mut dir = std::env::temp_dir();
@@ -71,6 +79,26 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create test dir");
         dir
+    }
+
+    fn write_rmod(dir: &std::path::Path, file_name: &str, name: &str, priority: i32) {
+        fs::write(
+            dir.join(file_name),
+            format!(
+                r#"#!rmod/v1
+name: {name}
+version: 0.1.0
+api_version: 1
+kind: script
+capabilities: providers
+priority: {priority}
+
+---module.js---
+export default function createModule() {{}}
+"#
+            ),
+        )
+        .expect("write rmod");
     }
 
     #[test]
@@ -113,10 +141,42 @@ capabilities = ["commands"]
         .expect("write index.js");
 
         let descriptors = discover_module_descriptors(&dir).expect("discover descriptors");
-        let names = descriptors.iter().map(|d| d.name.as_str()).collect::<Vec<_>>();
+        let names = descriptors
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect::<Vec<_>>();
         assert!(names.contains(&"alpha"));
         assert!(names.contains(&"beta"));
 
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discover_orders_descriptors_by_priority_then_name() {
+        let dir = test_dir("priority");
+        write_rmod(&dir, "zeta.rmod", "zeta", 20);
+        write_rmod(&dir, "alpha.rmod", "alpha", 10);
+        write_rmod(&dir, "beta.rmod", "beta", 10);
+
+        let descriptors = discover_module_descriptors(&dir).expect("discover descriptors");
+        let names = descriptors
+            .iter()
+            .map(|descriptor| descriptor.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["alpha", "beta", "zeta"]);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discover_reports_invalid_rmod_with_clear_error() {
+        let dir = test_dir("invalid-rmod");
+        fs::write(dir.join("broken.rmod"), "not an rmod").expect("write broken rmod");
+
+        let err = discover_module_descriptors(&dir).expect_err("invalid rmod must fail");
+
+        assert!(matches!(err, ModuleLoadError::Rmod(_)));
+        assert!(format!("{err:?}").contains("RMOD_E_INVALID_MAGIC"));
         let _ = fs::remove_dir_all(&dir);
     }
 }

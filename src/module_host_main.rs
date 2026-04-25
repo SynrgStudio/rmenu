@@ -5,8 +5,8 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use ipc::{
-    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem, IpcKeyEvent,
-    IpcSnapshot, ModuleInitPayload,
+    HostRequest, HostRequestPayload, HostResponse, HostResponsePayload, IpcAction, IpcItem,
+    IpcKeyEvent, IpcSnapshot, ModuleInitPayload,
 };
 use serde::{Deserialize, Serialize};
 
@@ -93,13 +93,18 @@ impl NodeRuntime {
             stdout: BufReader::new(stdout),
         };
 
-        let init_response = runtime.send(WorkerRequest::Init {
-            entry_code: module.entry_code.clone(),
-            config_json: module.config_json.clone(),
-        }, max_ipc_payload_bytes)?;
+        let init_response = runtime.send(
+            WorkerRequest::Init {
+                entry_code: module.entry_code.clone(),
+                config_json: module.config_json.clone(),
+            },
+            max_ipc_payload_bytes,
+        )?;
 
         if !init_response.ok {
-            return Err(init_response.error.unwrap_or_else(|| "node init failed".to_string()));
+            return Err(init_response
+                .error
+                .unwrap_or_else(|| "node init failed".to_string()));
         }
 
         Ok(runtime)
@@ -136,12 +141,17 @@ impl NodeRuntime {
         let _ = self.child.wait();
     }
 
-    fn send(&mut self, request: WorkerRequest, max_ipc_payload_bytes: usize) -> Result<WorkerResponse, String> {
+    fn send(
+        &mut self,
+        request: WorkerRequest,
+        max_ipc_payload_bytes: usize,
+    ) -> Result<WorkerResponse, String> {
         let encoded = serde_json::to_string(&request).map_err(|err| err.to_string())?;
         if encoded.len() > max_ipc_payload_bytes {
             return Err(format!(
                 "worker request exceeds max_ipc_payload_bytes ({} > {})",
-                encoded.len(), max_ipc_payload_bytes
+                encoded.len(),
+                max_ipc_payload_bytes
             ));
         }
 
@@ -152,7 +162,10 @@ impl NodeRuntime {
             .map_err(|err| err.to_string())?;
 
         let mut line = String::new();
-        let read = self.stdout.read_line(&mut line).map_err(|err| err.to_string())?;
+        let read = self
+            .stdout
+            .read_line(&mut line)
+            .map_err(|err| err.to_string())?;
         if read == 0 {
             return Err("node runtime closed stdout".to_string());
         }
@@ -160,7 +173,8 @@ impl NodeRuntime {
         if line.len() > max_ipc_payload_bytes {
             return Err(format!(
                 "worker response exceeds max_ipc_payload_bytes ({} > {})",
-                line.len(), max_ipc_payload_bytes
+                line.len(),
+                max_ipc_payload_bytes
             ));
         }
 
@@ -207,7 +221,9 @@ fn main() {
             break;
         }
 
-        if matches!(response.payload, HostResponsePayload::Ack) && line.contains("\"type\":\"Shutdown\"") {
+        if matches!(response.payload, HostResponsePayload::Ack)
+            && line.contains("\"type\":\"Shutdown\"")
+        {
             break;
         }
     }
@@ -239,7 +255,8 @@ fn handle_request(request: HostRequest, state: &mut HostState) -> HostResponse {
         }
         HostRequestPayload::OnLoad { snapshot } => {
             state.loaded = true;
-            run_hook(state, "onLoad", None, None, None, None, None, snapshot).unwrap_or(HostResponsePayload::Ack)
+            run_hook(state, "onLoad", None, None, None, None, None, snapshot)
+                .unwrap_or(HostResponsePayload::Ack)
         }
         HostRequestPayload::OnQueryChange { query, snapshot } => {
             if !state.loaded {
@@ -248,8 +265,17 @@ fn handle_request(request: HostRequest, state: &mut HostState) -> HostResponse {
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "onQueryChange", Some(query), None, None, None, None, Some(snapshot))
-                    .unwrap_or(HostResponsePayload::Ack)
+                run_hook(
+                    state,
+                    "onQueryChange",
+                    Some(query),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(snapshot),
+                )
+                .unwrap_or(HostResponsePayload::Ack)
             }
         }
         HostRequestPayload::OnKey { event, snapshot } => {
@@ -259,8 +285,17 @@ fn handle_request(request: HostRequest, state: &mut HostState) -> HostResponse {
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "onKey", None, Some(event), None, None, None, Some(snapshot))
-                    .unwrap_or(HostResponsePayload::Ack)
+                run_hook(
+                    state,
+                    "onKey",
+                    None,
+                    Some(event),
+                    None,
+                    None,
+                    None,
+                    Some(snapshot),
+                )
+                .unwrap_or(HostResponsePayload::Ack)
             }
         }
         HostRequestPayload::ProvideItems { query, snapshot } => {
@@ -270,8 +305,17 @@ fn handle_request(request: HostRequest, state: &mut HostState) -> HostResponse {
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "provideItems", Some(query), None, None, None, None, Some(snapshot))
-                    .unwrap_or(HostResponsePayload::ProvideItemsResult { items: Vec::new() })
+                run_hook(
+                    state,
+                    "provideItems",
+                    Some(query),
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(snapshot),
+                )
+                .unwrap_or(HostResponsePayload::ProvideItemsResult { items: Vec::new() })
             }
         }
         HostRequestPayload::DecorateItems { items, snapshot } => {
@@ -281,18 +325,41 @@ fn handle_request(request: HostRequest, state: &mut HostState) -> HostResponse {
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "decorateItems", None, None, Some(items), None, None, Some(snapshot))
-                    .unwrap_or(HostResponsePayload::DecorateItemsResult { items: Vec::new() })
+                run_hook(
+                    state,
+                    "decorateItems",
+                    None,
+                    None,
+                    Some(items),
+                    None,
+                    None,
+                    Some(snapshot),
+                )
+                .unwrap_or(HostResponsePayload::DecorateItemsResult { items: Vec::new() })
             }
         }
-        HostRequestPayload::OnCommand { command, args, snapshot } => {
+        HostRequestPayload::OnCommand {
+            command,
+            args,
+            snapshot,
+        } => {
             if !state.loaded {
                 HostResponsePayload::Error {
                     message: "module not loaded".to_string(),
                     recoverable: true,
                 }
             } else {
-                run_hook(state, "onCommand", None, None, None, Some(command), Some(args), Some(snapshot)).unwrap_or(HostResponsePayload::Ack)
+                run_hook(
+                    state,
+                    "onCommand",
+                    None,
+                    None,
+                    None,
+                    Some(command),
+                    Some(args),
+                    Some(snapshot),
+                )
+                .unwrap_or(HostResponsePayload::Ack)
             }
         }
         HostRequestPayload::OnUnload { snapshot } => {
@@ -310,7 +377,10 @@ fn handle_request(request: HostRequest, state: &mut HostState) -> HostResponse {
         }
     };
 
-    HostResponse { id: request.id, payload }
+    HostResponse {
+        id: request.id,
+        payload,
+    }
 }
 
 fn run_hook(
@@ -339,7 +409,9 @@ fn run_hook(
 
     if !response.ok {
         return Some(HostResponsePayload::Error {
-            message: response.error.unwrap_or_else(|| "script execution failed".to_string()),
+            message: response
+                .error
+                .unwrap_or_else(|| "script execution failed".to_string()),
             recoverable: true,
         });
     }
@@ -511,4 +583,118 @@ rl.on('line', async (line) => {
   }
 });
 "#
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ipc::{HostRequest, HostRequestPayload, HostResponsePayload, IpcSnapshot};
+    use super::{
+        handle_request, read_max_ipc_payload_bytes, HostState, NodeRuntime, WorkerRequest,
+        DEFAULT_MAX_IPC_PAYLOAD_BYTES,
+    };
+    use std::io::BufReader;
+    use std::process::{Command, Stdio};
+
+    fn empty_snapshot() -> IpcSnapshot {
+        IpcSnapshot {
+            query: String::new(),
+            items: Vec::new(),
+            selected_index: 0,
+            mode: "launcher".to_string(),
+        }
+    }
+
+    #[test]
+    fn max_ipc_payload_env_uses_default_for_missing_invalid_or_zero_values() {
+        std::env::remove_var("RMODULE_MAX_IPC_BYTES");
+        assert_eq!(read_max_ipc_payload_bytes(), DEFAULT_MAX_IPC_PAYLOAD_BYTES);
+
+        std::env::set_var("RMODULE_MAX_IPC_BYTES", "not-a-number");
+        assert_eq!(read_max_ipc_payload_bytes(), DEFAULT_MAX_IPC_PAYLOAD_BYTES);
+
+        std::env::set_var("RMODULE_MAX_IPC_BYTES", "0");
+        assert_eq!(read_max_ipc_payload_bytes(), DEFAULT_MAX_IPC_PAYLOAD_BYTES);
+
+        std::env::set_var("RMODULE_MAX_IPC_BYTES", "128");
+        assert_eq!(read_max_ipc_payload_bytes(), 128);
+
+        std::env::remove_var("RMODULE_MAX_IPC_BYTES");
+    }
+
+    #[test]
+    fn unloaded_module_requests_return_recoverable_errors() {
+        let mut state = HostState::default();
+        let response = handle_request(
+            HostRequest {
+                id: 7,
+                payload: HostRequestPayload::ProvideItems {
+                    query: "q".to_string(),
+                    snapshot: empty_snapshot(),
+                },
+            },
+            &mut state,
+        );
+
+        assert_eq!(response.id, 7);
+        match response.payload {
+            HostResponsePayload::Error {
+                message,
+                recoverable,
+            } => {
+                assert_eq!(message, "module not loaded");
+                assert!(recoverable);
+            }
+            other => panic!("expected error response, got {other:?}"),
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn node_runtime_send_rejects_oversized_worker_response() {
+        let mut child = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "Write-Output 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; Start-Sleep -Seconds 5",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn oversized response child");
+        let stdin = child.stdin.take().expect("child stdin");
+        let stdout = child.stdout.take().expect("child stdout");
+        let mut runtime = NodeRuntime {
+            child,
+            stdin,
+            stdout: BufReader::new(stdout),
+        };
+
+        let err = runtime
+            .send(WorkerRequest::Shutdown, 24)
+            .expect_err("oversized worker response should fail");
+
+        assert!(err.contains("worker response exceeds max_ipc_payload_bytes"));
+        let _ = runtime.child.kill();
+        let _ = runtime.child.wait();
+    }
+
+    #[test]
+    fn shutdown_clears_loaded_state_without_runtime() {
+        let mut state = HostState::default();
+        state.loaded = true;
+
+        let response = handle_request(
+            HostRequest {
+                id: 3,
+                payload: HostRequestPayload::Shutdown,
+            },
+            &mut state,
+        );
+
+        assert_eq!(response.id, 3);
+        assert!(matches!(response.payload, HostResponsePayload::Ack));
+        assert!(!state.loaded);
+        assert!(state.runtime.is_none());
+    }
 }
