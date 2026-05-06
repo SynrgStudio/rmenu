@@ -183,6 +183,10 @@ impl ModuleRuntime {
         self.external_descriptors.len()
     }
 
+    pub fn external_descriptors(&self) -> &[ModuleDescriptor] {
+        &self.external_descriptors
+    }
+
     pub fn configure_modules_dir(&mut self, modules_dir: impl Into<PathBuf>) {
         self.modules_dir = modules_dir.into();
     }
@@ -1522,6 +1526,7 @@ fn descriptor_signature(descriptor: &ModuleDescriptor) -> u64 {
     descriptor.entry_code.hash(&mut hasher);
     descriptor.config_json.hash(&mut hasher);
     descriptor.readme.hash(&mut hasher);
+    descriptor.resident.hash(&mut hasher);
     hasher.finish()
 }
 

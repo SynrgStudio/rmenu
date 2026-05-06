@@ -108,6 +108,15 @@ pub enum ModuleSourceType {
     Rmod,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResidentHelperDescriptor {
+    pub enabled: bool,
+    pub command: String,
+    pub args: Vec<String>,
+    pub autostart: bool,
+    pub shutdown: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleDescriptor {
     pub source_type: ModuleSourceType,
@@ -125,4 +134,5 @@ pub struct ModuleDescriptor {
     pub entry_code: String,
     pub config_json: Option<String>,
     pub readme: Option<String>,
+    pub resident: Option<ResidentHelperDescriptor>,
 }

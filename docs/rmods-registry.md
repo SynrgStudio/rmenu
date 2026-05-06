@@ -216,6 +216,20 @@ Esc          close rMenu
 
 Installed package contents live under `<data_dir>\modules`. User-created module data should live under `<data_dir>\state\modules\<module-name>` via `ctx.moduleStateDir()`, so rpack updates can replace package files without deleting user data.
 
+## Resident helper rpacks
+
+An `rpack` may declare a resident helper in `module.toml` with `[resident]`. The registry stores the rpack files normally; `rmenu-daemon` interprets the manifest after install and manages the helper lifecycle.
+
+Operational expectations:
+
+- helper paths are relative to the rpack folder;
+- helper files are included in the `files` integrity list;
+- helper startup failures are logged but do not prevent rMenu from opening;
+- install/update/uninstall should be followed by daemon helper sync;
+- resident helpers using global hooks should document their behavior and security implications in the rpack README.
+
+Current resident-helper rpacks in the SynrgStudio registry include `taskbar-volume` and `thorium-tabs`.
+
 ## Deferred work
 
 - multiple registries;

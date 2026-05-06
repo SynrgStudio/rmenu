@@ -185,6 +185,7 @@ pub fn parse_rmod(content: &str, source_path: String) -> Result<ModuleDescriptor
         entry_code,
         config_json,
         readme,
+        resident: None,
     })
 }
 

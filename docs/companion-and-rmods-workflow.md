@@ -294,6 +294,55 @@ shortcuts.user.json
 shortcuts.pending.json
 ```
 
+## Resident helper rpacks
+
+A resident helper rpack is a folder module that ships a native background helper and declares it in `module.toml`:
+
+```toml
+[resident]
+enabled = true
+command = "bin/helper.exe"
+autostart = true
+shutdown = "kill"
+```
+
+This is for module-owned behavior that must work while the rMenu UI is closed, such as global mouse hooks. The core contract is lifecycle-only:
+
+- discover resident helper declarations;
+- start helpers from module-local relative paths;
+- pass generic context such as module name, module dir, state dir, and config path;
+- stop helpers when the daemon quits or when helper sync removes them;
+- log failures without crashing rMenu.
+
+The core must not implement feature-specific behavior. For example:
+
+- `taskbar-volume` owns taskbar wheel/middle-click volume behavior.
+- `thorium-tabs` owns Thorium-only tab mouse gestures.
+
+Both are rpacks with native helpers. rMenu daemon only starts/stops them.
+
+Installed resident helper examples:
+
+| rpack | helper | behavior |
+| --- | --- | --- |
+| `taskbar-volume` | `bin/taskbar-volume.exe` | wheel over taskbar controls volume; middle click mutes |
+| `thorium-tabs` | `bin/thorium-tabs.exe` | Alt+wheel/click gestures control Thorium tabs |
+
+Security note: resident helpers may use low-level hooks or other OS integrations. Treat installation as a trust decision and prefer source-reviewed helpers.
+
+Troubleshooting:
+
+- Logs: `%APPDATA%\rmenu\rmenu-daemon.log`.
+- Expected startup line: `resident helper started module=<name> ...`.
+- Expected shutdown line: `resident helper stopped module=<name> ...`.
+- If a helper path is missing, reinstall/update the rpack and regenerate the registry source if developing locally.
+
+Manual acceptance checklist:
+
+- `taskbar-volume`: wheel up/down over taskbar changes volume; middle click toggles mute; no unexpected behavior away from taskbar.
+- `thorium-tabs`: gestures work in Thorium; gestures do not affect non-Thorium foreground apps.
+- Lifecycle: daemon start starts installed helpers; daemon quit stops helpers; uninstall/update sync stops or restarts helpers.
+
 ## Color picker rpack
 
 `color-picker` is distributed as an isolated `rpack`, not as rMenu core functionality.

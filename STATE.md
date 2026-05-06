@@ -1,7 +1,7 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-06 22:15
+updated_at: 2026-05-07 01:15
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -1486,3 +1486,300 @@ Validation already completed before acceptance:
 Next:
 
 - Commit and push the performance instrumentation/optimization changes.
+
+### 2026-05-06 22:20 — plan-cont resident helper replan
+
+Files changed:
+
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- Not run; planning/documentation-only changes.
+
+Context:
+
+- User wants `TaskbarVolume.ahk` and `TabsThorium.ahk` migrated without embedding feature-specific behavior in rMenu core.
+- Decision: add a generic resident-helper lifecycle primitive for rpack/directory modules, then implement TaskbarVolume and ThoriumTabs as rpacks with native helpers.
+
+Plan added:
+
+- T073 specify resident helper contract.
+- T074 parse resident helper metadata in module descriptors.
+- T075 implement generic daemon resident helper manager.
+- T076 sync helpers after install/update/uninstall or reload.
+- T077 add `taskbar-volume` rpack/helper.
+- T078 add `thorium-tabs` rpack/helper.
+- T079 document operations and authoring.
+- T080 blocked manual validation and acceptance.
+
+Next:
+
+- `/start-cont` beginning with T073.
+
+### 2026-05-06 22:25 — T073 claimed
+
+Task: T073 — Specify resident helper contract for rpack modules
+
+Scope:
+
+- Define generic `[resident]` manifest contract for rpack/directory modules.
+- Document lifecycle, safety model, daemon behavior, and authoring guidance.
+
+Validation planned:
+
+- Documentation task; no code validation required.
+
+### 2026-05-06 22:40 — T073 done, T074 claimed
+
+Tasks:
+
+- T073 — Specify resident helper contract for rpack modules: done.
+- T074 — Extend module descriptors to parse resident helper metadata: claimed.
+
+Files changed for T073:
+
+- `MANIFEST_SPEC_V1.md`
+- `MODULES_AUTHORING_GUIDE.md`
+- `MODULES_OPERATIONS_GUIDE.md`
+- `docs/companion-and-rmods-workflow.md`
+- `DECISIONS.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- T073 documentation-only; no code validation required.
+
+Next:
+
+- Implement descriptor parsing for `[resident]` metadata.
+
+### 2026-05-06 22:55 — T074 done, T075 claimed
+
+Tasks:
+
+- T074 — Extend module descriptors to parse resident helper metadata: done.
+- T075 — Implement generic daemon resident helper manager: claimed.
+
+Files changed for T074:
+
+- `src/modules/types.rs`
+- `src/modules/manifest.rs`
+- `src/modules/rmod.rs`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo test modules::manifest`: OK
+- `cargo test rmods`: OK
+- `cargo check`: OK
+
+Next:
+
+- Add daemon-owned resident helper manager and integrate daemon startup/shutdown lifecycle.
+
+### 2026-05-06 23:15 — T075 done, T076 claimed
+
+Tasks:
+
+- T075 — Implement generic daemon resident helper manager: done.
+- T076 — Sync resident helpers after module reload/install/uninstall: claimed.
+
+Files changed for T075:
+
+- `src/resident_helpers.rs`
+- `src/daemon_main.rs`
+- `src/modules/mod.rs`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test`: OK
+- `cargo build --bin rmenu-daemon`: OK
+- `C:\Users\dnaon\AppData\Local\Temp\resident-helper-smoke.ps1`: OK
+
+Next:
+
+- Add deterministic resident helper sync after runtime descriptor changes and restart changed helpers.
+
+### 2026-05-06 23:35 — T076 done, T077 claimed
+
+Tasks:
+
+- T076 — Sync resident helpers after module reload/install/uninstall: done.
+- T077 — Add taskbar-volume rpack with native resident helper: claimed.
+
+Files changed for T076:
+
+- `src/resident_helpers.rs`
+- `src/daemon_main.rs`
+- `src/modules/mod.rs`
+- `src/main.rs`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test`: OK
+- `cargo build --bin rmenu-daemon`: OK
+- `C:\Users\dnaon\AppData\Local\Temp\resident-helper-smoke.ps1`: OK
+- `npm run check`: skipped; no `package.json` in `C:\rMenu`.
+
+Next:
+
+- Implement `taskbar-volume` rpack/helper in `C:\rmods` using the resident contract.
+
+### 2026-05-07 00:00 — T077 done, T078 claimed
+
+Tasks:
+
+- T077 — Add taskbar-volume rpack with native resident helper: done.
+- T078 — Add thorium-tabs rpack with native resident helper: claimed.
+
+Files changed for T077:
+
+- `C:\rmods\tools\taskbar-volume\Cargo.toml`
+- `C:\rmods\tools\taskbar-volume\Cargo.lock`
+- `C:\rmods\tools\taskbar-volume\src\main.rs`
+- `C:\rmods\rpacks\taskbar-volume\module.toml`
+- `C:\rmods\rpacks\taskbar-volume\module.js`
+- `C:\rmods\rpacks\taskbar-volume\config.json`
+- `C:\rmods\rpacks\taskbar-volume\README.md`
+- `C:\rmods\rpacks\taskbar-volume\bin\taskbar-volume.exe`
+- `C:\rmods\registry.json`
+
+Validation:
+
+- `cargo fmt --all` in `C:\rmods\tools\taskbar-volume`: OK
+- `cargo build --release` in `C:\rmods\tools\taskbar-volume`: OK
+- `python scripts/generate-registry.py` in `C:\rmods`: OK
+- Manual taskbar gesture validation deferred to T080.
+
+Next:
+
+- Implement `thorium-tabs` rpack/helper.
+
+### 2026-05-07 00:25 — T078 done, T079 claimed
+
+Tasks:
+
+- T078 — Add thorium-tabs rpack with native resident helper: done.
+- T079 — Document resident helper operations and rMods UX: claimed.
+
+Files changed for T078:
+
+- `C:\rmods\tools\thorium-tabs\Cargo.toml`
+- `C:\rmods\tools\thorium-tabs\Cargo.lock`
+- `C:\rmods\tools\thorium-tabs\src\main.rs`
+- `C:\rmods\rpacks\thorium-tabs\module.toml`
+- `C:\rmods\rpacks\thorium-tabs\module.js`
+- `C:\rmods\rpacks\thorium-tabs\config.json`
+- `C:\rmods\rpacks\thorium-tabs\README.md`
+- `C:\rmods\rpacks\thorium-tabs\bin\thorium-tabs.exe`
+- `C:\rmods\registry.json`
+
+Validation:
+
+- `cargo fmt --all` in `C:\rmods\tools\thorium-tabs`: OK
+- `cargo build --release` in `C:\rmods\tools\thorium-tabs`: OK
+- `python scripts/generate-registry.py` in `C:\rmods`: OK
+- Manual Thorium gesture validation deferred to T080.
+
+Next:
+
+- Update resident helper operations/docs and rMods UX notes.
+
+### 2026-05-07 00:40 — T079 done, resident helper implementation checkpoint
+
+Task:
+
+- T079 — Document resident helper operations and rMods UX: done.
+
+Files changed for T079:
+
+- `README.md`
+- `MODULES_OPERATIONS_GUIDE.md`
+- `docs/companion-and-rmods-workflow.md`
+- `docs/rmods-registry.md`
+- `C:\rmods\README.md`
+
+Validation:
+
+- Documentation task; no code validation required.
+
+Resident helper work completed in this wave:
+
+- T073 done: resident manifest/contract documented.
+- T074 done: `[resident]` metadata parsed and validated.
+- T075 done: daemon-owned generic helper manager implemented.
+- T076 done: helper sync/restart/stop behavior implemented and tested.
+- T077 done: `taskbar-volume` rpack/helper added to `C:\rmods`.
+- T078 done: `thorium-tabs` rpack/helper added to `C:\rmods`.
+- T079 done: operations/authoring/troubleshooting docs updated.
+
+Remaining:
+
+- T080 is blocked pending manual local acceptance of taskbar-volume and thorium-tabs gestures/lifecycle.
+
+### 2026-05-07 01:00 — Resident helper feedback patch 0.1.1
+
+User feedback:
+
+- `taskbar-volume` wheel behavior works perfectly.
+- Middle-click over a taskbar app icon must not mute because Windows uses it to open a new app window.
+- `thorium-tabs` Alt+wheel opened the Windows Alt+Tab UI; helper must send Ctrl+Tab / Ctrl+Shift+Tab without leaving Alt active.
+
+Changes:
+
+- Updated `C:\rmods\tools\taskbar-volume\src\main.rs` so wheel still works over taskbar, but middle-click mute only runs when `WindowFromPoint` is the taskbar background/root; middle-click over child/icon windows passes through.
+- Updated `C:\rmods\tools\thorium-tabs\src\main.rs` to synthesize Alt-up before sending tab combos, then restore Alt-down for continued gesture use.
+- Bumped both rpack manifests to `0.1.1`.
+- Rebuilt helper binaries and copied them into `C:\rmods\rpacks\*/bin`.
+- Regenerated `C:\rmods\registry.json`.
+- Copied updated rpacks into `C:\rMenuData\modules\taskbar-volume` and `C:\rMenuData\modules\thorium-tabs` for local testing without push.
+- Restarted local debug `rmenu-daemon`; logs show both resident helpers started.
+
+Validation:
+
+- `cargo fmt --all` in `C:\rmods\tools\taskbar-volume`: OK
+- `cargo build --release` in `C:\rmods\tools\taskbar-volume`: OK
+- `cargo fmt --all` in `C:\rmods\tools\thorium-tabs`: OK
+- `cargo build --release` in `C:\rmods\tools\thorium-tabs`: OK
+- `python scripts/generate-registry.py` in `C:\rmods`: OK
+- Runtime check: `rmenu-daemon`, `taskbar-volume`, and `thorium-tabs` processes are running from local test install.
+
+Remaining:
+
+- User manual validation of middle-click pass-through on taskbar app icons.
+- User manual validation of Thorium Alt+wheel tab switching without Windows Alt+Tab UI.
+
+### 2026-05-07 01:15 — thorium-tabs context-menu patch 0.1.2
+
+User feedback:
+
+- `Alt+RButton` reopens the last closed tab but the browser context menu also opens.
+
+Root cause:
+
+- The helper consumed `WM_RBUTTONDOWN`, but `WM_RBUTTONUP` still reached Thorium. Browsers commonly open the context menu on right-button release.
+
+Changes:
+
+- Updated `C:\rmods\tools\thorium-tabs\src\main.rs` to track handled Alt+left/right button down events and consume the matching button-up event.
+- Bumped `C:\rmods\rpacks\thorium-tabs\module.toml` to `0.1.2`.
+- Updated `C:\rmods\rpacks\thorium-tabs\README.md`.
+- Rebuilt `thorium-tabs.exe`, copied it into the rpack, regenerated `registry.json`, copied the rpack into `C:\rMenuData\modules\thorium-tabs`, and restarted local debug daemon.
+
+Validation:
+
+- `cargo fmt --all` in `C:\rmods\tools\thorium-tabs`: OK
+- `cargo build --release` in `C:\rmods\tools\thorium-tabs`: OK
+- `python scripts/generate-registry.py` in `C:\rmods`: OK
+- Runtime check: `rmenu-daemon`, `taskbar-volume`, and `thorium-tabs` are running from local test install.
+
+Remaining:
+
+- User manual validation: `Alt+RButton` should reopen the last closed tab without opening the context menu.

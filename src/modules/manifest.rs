@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 
-use super::types::{ModuleDescriptor, ModuleSourceType};
+use super::types::{ModuleDescriptor, ModuleSourceType, ResidentHelperDescriptor};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestParseError {
@@ -10,6 +10,7 @@ pub enum ManifestParseError {
     MissingRequiredField(&'static str),
     InvalidApiVersion(String),
     MissingEntry,
+    InvalidResidentCommand(String),
 }
 
 pub fn load_directory_descriptor(
@@ -21,6 +22,7 @@ pub fn load_directory_descriptor(
 
     let mut root_values: BTreeMap<String, String> = BTreeMap::new();
     let mut config_values: BTreeMap<String, String> = BTreeMap::new();
+    let mut resident_values: BTreeMap<String, String> = BTreeMap::new();
     let mut current_section = String::new();
 
     for line in manifest_content.lines() {
@@ -44,10 +46,16 @@ pub fn load_directory_descriptor(
         let key = raw_key.trim().to_string();
         let value = raw_value.trim().to_string();
 
-        if current_section == "config" {
-            config_values.insert(key, value);
-        } else {
-            root_values.insert(key, value);
+        match current_section.as_str() {
+            "config" => {
+                config_values.insert(key, value);
+            }
+            "resident" => {
+                resident_values.insert(key, value);
+            }
+            _ => {
+                root_values.insert(key, value);
+            }
         }
     }
 
@@ -76,6 +84,8 @@ pub fn load_directory_descriptor(
         .map(|path| fs::read_to_string(path).map_err(|err| ManifestParseError::Io(err.to_string())))
         .transpose()?;
 
+    let resident = parse_resident_helper(&resident_values)?;
+
     let readme_path = module_dir.join("README.md");
     let readme = if readme_path.exists() {
         Some(
@@ -102,6 +112,7 @@ pub fn load_directory_descriptor(
         entry_code,
         config_json,
         readme,
+        resident,
     })
 }
 
@@ -124,6 +135,51 @@ fn int_value(values: &BTreeMap<String, String>, key: &str) -> Option<i32> {
     values
         .get(key)
         .and_then(|raw| raw.trim().parse::<i32>().ok())
+}
+
+fn parse_resident_helper(
+    values: &BTreeMap<String, String>,
+) -> Result<Option<ResidentHelperDescriptor>, ManifestParseError> {
+    if values.is_empty() {
+        return Ok(None);
+    }
+
+    let enabled = bool_value(values, "enabled").unwrap_or(false);
+    if !enabled {
+        return Ok(None);
+    }
+
+    let command = string_value(values, "command")
+        .ok_or_else(|| ManifestParseError::InvalidResidentCommand("missing command".to_string()))?;
+    validate_relative_resident_command(&command)?;
+
+    Ok(Some(ResidentHelperDescriptor {
+        enabled,
+        command,
+        args: parse_array(values, "args"),
+        autostart: bool_value(values, "autostart").unwrap_or(true),
+        shutdown: string_value(values, "shutdown").unwrap_or_else(|| "kill".to_string()),
+    }))
+}
+
+fn validate_relative_resident_command(command: &str) -> Result<(), ManifestParseError> {
+    let path = Path::new(command);
+    if path.is_absolute() {
+        return Err(ManifestParseError::InvalidResidentCommand(format!(
+            "resident command must be relative: {command}"
+        )));
+    }
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir
+        )
+    }) {
+        return Err(ManifestParseError::InvalidResidentCommand(format!(
+            "resident command cannot leave module directory: {command}"
+        )));
+    }
+    Ok(())
 }
 
 fn parse_array(values: &BTreeMap<String, String>, key: &str) -> Vec<String> {
@@ -209,6 +265,100 @@ file = "config.json"
         assert_eq!(descriptor.entry_code, "export default () => ({})");
         assert_eq!(descriptor.config_json.as_deref(), Some("{\"ok\":true}"));
         assert_eq!(descriptor.readme.as_deref(), Some("# Module"));
+        assert_eq!(descriptor.resident, None);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_directory_descriptor_parses_resident_helper() {
+        let dir = temp_module_dir("resident");
+        fs::create_dir_all(dir.join("bin")).expect("create bin dir");
+        fs::write(
+            dir.join("module.toml"),
+            r#"
+name = "resident-module"
+version = "1.0.0"
+api_version = "1"
+kind = "script"
+entry = "module.js"
+capabilities = []
+
+[resident]
+enabled = true
+command = "bin/helper.exe"
+args = ["--flag", "value"]
+autostart = true
+shutdown = "kill"
+"#,
+        )
+        .expect("write manifest");
+        fs::write(dir.join("module.js"), "export default () => ({})").expect("write entry");
+
+        let descriptor = load_directory_descriptor(&dir).expect("manifest should parse");
+        let resident = descriptor.resident.expect("resident helper");
+
+        assert!(resident.enabled);
+        assert_eq!(resident.command, "bin/helper.exe");
+        assert_eq!(resident.args, vec!["--flag", "value"]);
+        assert!(resident.autostart);
+        assert_eq!(resident.shutdown, "kill");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_directory_descriptor_ignores_disabled_resident_helper() {
+        let dir = temp_module_dir("resident-disabled");
+        fs::write(
+            dir.join("module.toml"),
+            r#"
+name = "resident-disabled"
+version = "1.0.0"
+api_version = "1"
+kind = "script"
+entry = "module.js"
+capabilities = []
+
+[resident]
+enabled = false
+command = "bin/helper.exe"
+"#,
+        )
+        .expect("write manifest");
+        fs::write(dir.join("module.js"), "export default () => ({})").expect("write entry");
+
+        let descriptor = load_directory_descriptor(&dir).expect("manifest should parse");
+        assert_eq!(descriptor.resident, None);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_directory_descriptor_rejects_unsafe_resident_command() {
+        let dir = temp_module_dir("resident-unsafe");
+        fs::write(
+            dir.join("module.toml"),
+            r#"
+name = "resident-unsafe"
+version = "1.0.0"
+api_version = "1"
+kind = "script"
+entry = "module.js"
+capabilities = []
+
+[resident]
+enabled = true
+command = "../helper.exe"
+"#,
+        )
+        .expect("write manifest");
+        fs::write(dir.join("module.js"), "export default () => ({})").expect("write entry");
+
+        assert!(matches!(
+            load_directory_descriptor(&dir),
+            Err(ManifestParseError::InvalidResidentCommand(_))
+        ));
 
         let _ = fs::remove_dir_all(dir);
     }

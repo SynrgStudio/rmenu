@@ -141,6 +141,8 @@ Daemon logs are written to:
 %APPDATA%\rmenu\rmenu-daemon.log
 ```
 
+The daemon also owns generic resident-helper lifecycle for installed `rpack` modules that declare `[resident]` in `module.toml`. It starts helpers from module-local paths, passes module/state/config context, syncs helpers after module reload/install/uninstall points, and stops helpers on `--quit`. Feature behavior stays in the rpack helper, not rMenu core. Current resident-helper examples are `taskbar-volume` and `thorium-tabs`.
+
 ### Persistent data root model
 
 rMenu uses a persistent data root for modules, companions, config, and state. The default Windows data root is `C:\rMenuData`. The target layout is:
@@ -210,6 +212,8 @@ rmenu-rmods/
 ```
 
 `registry.json` is generated automatically by GitHub Actions from `modules/*.rmod` and `rpacks/*` folders; it is not edited by hand. `/rmods` fetches that generated registry, shows available/installed/updateable modules, verifies SHA-256 before install, installs atomically into `<data_dir>\modules`, and reloads modules.
+
+Some rpacks include resident native helpers. Treat those installs as trust decisions because helpers may use OS integrations such as global hooks. The `/rmods` installed files still land under `<data_dir>\modules`; mutable helper/user state belongs under `<data_dir>\state\modules\<module-name>`.
 
 Current controls:
 

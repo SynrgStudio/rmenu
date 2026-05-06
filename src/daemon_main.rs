@@ -12,6 +12,8 @@ mod modules;
 #[cfg(not(test))]
 mod ranking;
 #[cfg(not(test))]
+mod resident_helpers;
+#[cfg(not(test))]
 mod rmods_registry;
 #[cfg(not(test))]
 mod rsnip_companion;
@@ -37,6 +39,8 @@ use std::time::{Duration, Instant};
 
 #[cfg(not(test))]
 use app_state::{AppState, LauncherItem};
+#[cfg(not(test))]
+use resident_helpers::ResidentHelperManager;
 #[cfg(not(test))]
 use rsnip_companion::{RsnipCommand, RsnipCompanion};
 #[cfg(not(test))]
@@ -808,6 +812,8 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
     }
 
     let (prepared, mut runtime) = prepare_rmenu(&options)?;
+    let mut resident_helpers =
+        ResidentHelperManager::start_from_descriptors(runtime.external_descriptors());
     log_line(&format!(
         "daemon started hotkey={} mode=resident-prewarmed modules_dir={} rmenu_arg={}",
         options.hotkey,
@@ -829,6 +835,7 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
             let hotkey_received_at = Instant::now();
             rmenu_open_count = rmenu_open_count.saturating_add(1);
             runtime = show_warm_rmenu(&prepared, runtime, rmenu_open_count, hotkey_received_at);
+            resident_helpers.sync(runtime.external_descriptors());
         } else if msg.message == WM_HOTKEY && msg.wParam.0 == RTASKS_PANEL_HOTKEY_ID as usize {
             if let Ok(companion) = RtasksCompanion::discover() {
                 if rtasks_panel_open {
@@ -873,6 +880,7 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
         }
     }
 
+    resident_helpers.stop_all();
     stop_rsnip_daemon(active_rsnip);
     stop_rtasks_daemon(active_rtasks);
     log_line("daemon stopped");

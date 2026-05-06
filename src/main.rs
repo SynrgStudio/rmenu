@@ -3,6 +3,8 @@ mod fuzzy;
 mod launcher;
 mod modules;
 mod ranking;
+#[cfg(test)]
+mod resident_helpers;
 mod rmods_registry;
 #[allow(dead_code)]
 mod rsnip_companion;

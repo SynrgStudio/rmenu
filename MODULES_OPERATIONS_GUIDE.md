@@ -101,6 +101,36 @@ Schema v1 supports `rmod` and `rpack` package kinds and includes module identity
 
 Use `/rmods` in the launcher to fetch the registry, mark modules for change with `Space`, refresh with `F5`/`Ctrl+R`, select updates with `Ctrl+U`, and apply marked changes with `Enter`. Markers mean `[x]` installed, `[ ]` not installed, and `[/]` pending change. Installed files land in `<data_dir>\modules`, with supporting cache/state under `<data_dir>\state`.
 
+### Resident helper operations
+
+Some rpack modules may declare a `[resident]` helper. These helpers are background native processes managed by `rmenu-daemon`, intended for features that must work while the rMenu window is closed.
+
+Operational rules:
+
+- `rmenu-daemon` owns helper lifecycle.
+- Helpers are started from module-local relative paths.
+- Helpers receive generic module/state/config context; they do not receive privileged core APIs.
+- Helpers are stopped when the daemon quits or when the module is removed/disabled during helper sync.
+- Helper stdout/stderr should be hidden to avoid console flashes.
+- Failures are logged and should not prevent rMenu from opening.
+
+Security note: resident helpers can implement global hooks. Install only trusted rpacks and review their README/source before enabling them.
+
+Troubleshooting:
+
+- Check `%APPDATA%\rmenu\rmenu-daemon.log` for `resident helper started`, `resident helper start failed`, and `resident helper stopped` lines.
+- Confirm the installed rpack contains the helper path declared by `[resident].command`.
+- Restart or quit/start `rmenu-daemon` if a helper was installed while no daemon was running.
+- If a helper remains after daemon quit, stop the process manually and report it; the expected v1 shutdown policy is process termination.
+
+Manual validation checklist for resident mouse helpers:
+
+- install through `/rmods`;
+- confirm daemon starts the helper;
+- validate the intended gesture only in its documented scope;
+- validate the gesture does not leak outside that scope;
+- uninstall or disable and confirm helper stops on the documented sync/daemon lifecycle point.
+
 ---
 
 ## 5. Operational limits

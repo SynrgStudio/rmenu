@@ -331,3 +331,35 @@ These dispatch to direct RSnip IPC and do not shell through PowerShell or CMD.
 
 - `record`, `screen`, `screenshot`, and `text` are not public rMenu aliases.
 - The old wrapper `.rmod` files are not part of the integrated path.
+
+---
+
+## DEC-012 — Resident rpack helpers are lifecycle-managed, not core features
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+Some AHK modules are resident OS integrations rather than launcher commands. Examples include taskbar volume mouse-wheel behavior and Thorium tab mouse gestures. These should work while rMenu is running in the background, but embedding each behavior in rMenu core would grow the core with feature-specific automation.
+
+### Decision
+
+rMenu may add a generic resident-helper lifecycle primitive for directory/rpack modules. A module can declare one resident helper in `module.toml` under `[resident]`. `rmenu-daemon` starts, tracks, syncs, and stops helpers. Feature logic remains entirely inside the module's helper executable.
+
+The core is allowed to know:
+
+- module name;
+- module directory;
+- module state directory;
+- helper relative command and static args;
+- process lifecycle state.
+
+The core is not allowed to know feature semantics such as taskbar volume, Thorium, browser tabs, text expansion, or window snapping.
+
+### Consequences
+
+- TaskbarVolume and ThoriumTabs migrate as rpacks with native helpers.
+- Future resident features can reuse the same lifecycle primitive.
+- Resident helpers are a stronger trust boundary than ordinary JS modules because they may install global hooks or interact with the OS.
+- `/rmods` and docs should make resident-helper behavior visible enough for users to decide whether to install the module.

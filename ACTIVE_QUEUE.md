@@ -1,8 +1,8 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-06 22:15
-planned_at: 2026-05-06 21:00
+updated_at: 2026-05-07 01:15
+planned_at: 2026-05-06 22:20
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -91,6 +91,18 @@ Replanned 2026-05-06 21:00 after daemon open-latency analysis:
 - Next wave focuses on measuring and then optimizing the daemon resident path before packaging.
 - Target UX: first visible input under 200ms, warm reopens under 100-200ms if feasible, with external module hosts and companion state kept hot.
 - Multiple registries remain future work and are blocked behind performance/resident UX work.
+
+
+
+Replanned 2026-05-06 22:20 after resident helper decision:
+
+- Taskbar volume and Thorium tab gestures should not become rMenu core features.
+- Add a generic resident-helper lifecycle primitive for rpack/directory modules, owned by `rmenu-daemon`.
+- Feature-specific behavior lives in rpack helper executables distributed through `SynrgStudio/rmods`.
+- Initial resident helper targets:
+  - `taskbar-volume`: mouse wheel/middle click over Windows taskbar controls system volume.
+  - `thorium-tabs`: Alt+wheel/click gestures in Thorium map to tab navigation/close/reopen.
+- Core must remain generic: discover descriptors, start/stop/sync helpers, pass module/state/config paths, and expose diagnostics. It must not know what "taskbar volume" or "Thorium tabs" mean.
 
 ## Queue
 
@@ -2359,3 +2371,287 @@ Depends on:
 - T071
 Notes:
 - Packaging/release remains out of scope until user asks.
+
+### T073 — Specify resident helper contract for rpack modules
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 22:25
+Last update: 2026-05-06 22:40
+Scope:
+- Define a generic `[resident]` manifest section for directory/rpack modules.
+- Keep the contract feature-agnostic: helper command, args, autostart/enabled, shutdown policy, environment/CLI paths, and diagnostics.
+- Decide initial supported shutdown behavior for Windows helper processes.
+- Define how `rmenu-daemon` starts helpers at daemon startup and syncs after module changes or `/rmods` installs.
+- Document security implications of resident helpers and low-level hooks.
+DoD:
+- Contract is documented in module manifest/docs.
+- Contract explicitly says core does not implement feature-specific mouse/hotkey behavior.
+- TaskbarVolume/ThoriumTabs can be expressed using the contract.
+Validation:
+- Documentation/spec task; no code validation required.
+Files likely touched:
+- `MANIFEST_SPEC_V1.md`
+- `MODULES_AUTHORING_GUIDE.md`
+- `MODULES_OPERATIONS_GUIDE.md`
+- `docs/companion-and-rmods-workflow.md`
+- `DECISIONS.md`
+- `STATE.md`
+Risk: medium
+Depends on:
+- none
+Notes:
+- This is the architectural guardrail before touching daemon code.
+- Resident helper contract documented in manifest, authoring, operations, workflow docs, and DEC-012.
+
+### T074 — Extend module descriptors to parse resident helper metadata
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 22:40
+Last update: 2026-05-06 22:55
+Scope:
+- Add resident-helper metadata to `ModuleDescriptor` for directory/rpack modules.
+- Parse `[resident]` from `module.toml` with safe relative helper command validation.
+- Preserve backward compatibility for modules without `[resident]`.
+- Ensure registry/rpack install validation still accepts existing rpacks and rejects unsafe resident paths where appropriate.
+DoD:
+- `load_directory_descriptor` parses valid resident metadata.
+- Unsafe absolute/traversal helper paths are rejected or ignored with explicit behavior.
+- Existing module descriptor tests still pass.
+- New tests cover valid/missing/unsafe resident section cases.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test modules::manifest`
+- `cargo test rmods`
+Files likely touched:
+- `src/modules/types.rs`
+- `src/modules/manifest.rs`
+- `src/modules/loader.rs`
+- `src/rmods_registry.rs`
+- tests in module/rmods code
+Risk: medium
+Depends on:
+- T073
+Notes:
+- Keep the descriptor data generic enough for future resident helpers.
+- Implemented `ResidentHelperDescriptor`, `[resident]` parsing, and safe relative command validation.
+
+### T075 — Implement generic daemon resident helper manager
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 22:55
+Last update: 2026-05-06 23:15
+Scope:
+- Add a daemon-owned resident helper manager that starts enabled resident helpers from loaded module descriptors.
+- Pass generic context to helpers, for example:
+  - `--module-dir <path>`;
+  - `--state-dir <path>`;
+  - `--config-json <path>` or config path when present;
+  - `--module-name <name>`.
+- Track child processes by module name and helper command.
+- Stop helpers on `rmenu-daemon --quit`.
+- Keep stdout/stderr hidden and avoid console flashes.
+DoD:
+- Daemon starts resident helpers at startup without feature-specific logic.
+- Daemon stops helpers on quit.
+- Re-running daemon does not duplicate helper processes for the same running daemon instance.
+- Failures are logged without crashing daemon startup.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- Manual/smoke: start daemon with a fake resident helper and confirm process starts/stops.
+Files likely touched:
+- `src/daemon_main.rs`
+- new `src/resident_helpers.rs` or module under `src/modules/`
+- `src/settings.rs` only if config toggles are needed
+- tests if process lifecycle can be isolated
+Risk: high
+Depends on:
+- T074
+Notes:
+- This is the only planned rMenu core primitive for these features.
+- Added daemon-owned `ResidentHelperManager`, no-console child spawning, generic context args, daemon startup integration, shutdown cleanup, and fake-helper smoke validation.
+
+### T076 — Sync resident helpers after module reload/install/uninstall
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 23:15
+Last update: 2026-05-06 23:35
+Scope:
+- Ensure daemon helper manager notices module descriptor changes after `/rmods` install/update/uninstall or hot reload.
+- Start newly installed resident helpers without restarting Windows if feasible.
+- Stop removed/disabled helpers.
+- Restart changed helpers when version/path/config changes.
+DoD:
+- `/rmods` install of a resident rpack can activate its helper after daemon sync.
+- `/rmods` uninstall or disable stops its helper.
+- Helper sync is deterministic and logged.
+- Existing hot reload behavior still works for normal modules.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- Manual/smoke with fake resident helper install/remove or local module directory change.
+Files likely touched:
+- `src/daemon_main.rs`
+- resident helper manager file
+- `src/modules/mod.rs`
+- `src/rmods_registry.rs` if install needs explicit daemon sync signal
+Risk: high
+Depends on:
+- T075
+Notes:
+- Initial acceptable behavior may be "sync after rMenu UI closes" if live intra-UI sync is too risky.
+- Implemented sync after daemon-managed UI returns and descriptor changes propagate; helper manager starts new, stops removed, and restarts signature-changed helpers.
+
+### T077 — Add taskbar-volume rpack with native resident helper
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 23:35
+Last update: 2026-05-07 00:00
+Scope:
+- Create `taskbar-volume` rpack in `C:\rmods`.
+- Implement native Windows helper that:
+  - runs without console;
+  - installs a low-level mouse hook;
+  - detects wheel/middle-click over the taskbar;
+  - sends volume up/down/mute inputs;
+  - exits cleanly when the daemon stops the process.
+- Add minimal module.js/readme/config so `/rmods` can install and describe it.
+DoD:
+- `taskbar-volume` is installable as an rpack.
+- Helper behavior matches AHK `TaskbarVolume.ahk`.
+- No taskbar-volume logic is added to rMenu core.
+- Registry updates include the new rpack.
+Validation:
+- Build helper release binary.
+- Run rmods generator.
+- Manual: install rpack, start daemon, wheel over taskbar changes volume, middle click mutes.
+Files likely touched:
+- `C:\rmods\rpacks\taskbar-volume\*`
+- `C:\rmods\tools\taskbar-volume\*`
+- `C:\rmods\registry.json`
+- maybe `C:\rmods\README.md`
+Risk: medium
+Depends on:
+- T076
+Notes:
+- The helper should use the generic resident contract only.
+- Added `taskbar-volume` rpack and native helper. Manual gesture acceptance remains covered by T080.
+
+### T078 — Add thorium-tabs rpack with native resident helper
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 00:00
+Last update: 2026-05-07 00:25
+Scope:
+- Create `thorium-tabs` rpack in `C:\rmods`.
+- Implement native Windows helper that:
+  - runs without console;
+  - installs a low-level mouse hook;
+  - only acts when the relevant target is Thorium (`thorium.exe`) by foreground/window-under-cursor process check;
+  - maps `Alt+WheelDown` to `Ctrl+Shift+Tab`;
+  - maps `Alt+WheelUp` to `Ctrl+Tab`;
+  - maps `Alt+LButton` to `Ctrl+W`;
+  - maps `Alt+RButton` to `Ctrl+Shift+T`.
+- Add config for executable name if practical.
+DoD:
+- `thorium-tabs` is installable as an rpack.
+- Helper behavior matches AHK `TabsThorium.ahk`.
+- No Thorium-specific logic is added to rMenu core.
+- Registry updates include the new rpack.
+Validation:
+- Build helper release binary.
+- Run rmods generator.
+- Manual: install rpack, start daemon, validate gestures in Thorium and no effect outside Thorium.
+Files likely touched:
+- `C:\rmods\rpacks\thorium-tabs\*`
+- `C:\rmods\tools\thorium-tabs\*`
+- `C:\rmods\registry.json`
+- maybe `C:\rmods\README.md`
+Risk: medium
+Depends on:
+- T076
+Notes:
+- Consider user-configurable browser exe names after MVP.
+- Added `thorium-tabs` rpack and native helper. Manual gesture acceptance remains covered by T080.
+
+### T079 — Document resident helper operations and rMods UX
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 00:25
+Last update: 2026-05-07 00:40
+Scope:
+- Document how resident helper rpacks are authored, installed, started, stopped, and uninstalled.
+- Document that resident helpers can require global hooks and should be reviewed before install.
+- Update `/rmods` docs if the UI should expose resident-helper capability/requirements.
+- Add troubleshooting section for helpers that fail to start or keep running after daemon quit.
+DoD:
+- User-facing docs explain resident helpers.
+- Authoring docs explain `[resident]` manifest section.
+- Manual validation checklist covers taskbar-volume and thorium-tabs.
+Validation:
+- Documentation task; no code validation required unless docs tooling exists.
+Files likely touched:
+- `README.md`
+- `MANIFEST_SPEC_V1.md`
+- `MODULES_AUTHORING_GUIDE.md`
+- `MODULES_OPERATIONS_GUIDE.md`
+- `docs/companion-and-rmods-workflow.md`
+- `docs/rmods-registry.md`
+- `STATE.md`
+Risk: low
+Depends on:
+- T077
+- T078
+Notes:
+- Keep docs explicit that resident helpers are optional modules, not core features.
+- Updated resident helper docs, troubleshooting, rMods schema notes, and manual validation checklist.
+
+### T080 — Manual resident helper validation and acceptance
+
+Status: blocked
+Claimed by:
+Started:
+Last update: 2026-05-07 01:00
+Blocker:
+- Requires local Windows manual validation after T077/T078 are installed through `/rmods`.
+Scope:
+- Validate taskbar-volume behavior:
+  - wheel up/down over taskbar changes volume;
+  - middle click mutes;
+  - no unexpected behavior away from taskbar.
+- Validate thorium-tabs behavior:
+  - Alt+wheel/click gestures work in Thorium;
+  - gestures do not leak into non-Thorium apps.
+- Validate lifecycle:
+  - daemon start starts installed helpers;
+  - daemon quit stops helpers;
+  - uninstall stops/removes helper on next sync or documented lifecycle point.
+DoD:
+- User accepts behavior and lifecycle.
+- Any remaining quirks are documented or queued.
+Validation:
+- manual local Windows validation.
+Files likely touched:
+- `STATE.md`
+- maybe docs if quirks are found
+Risk: low
+Depends on:
+- T077
+- T078
+- T079
+Notes:
+- This is the final acceptance gate for resident helpers.
+- Partial user validation: taskbar-volume wheel behavior works perfectly.
+- Feedback implemented in rmods 0.1.1 helpers: taskbar-volume passes middle-click through on taskbar app icons; thorium-tabs temporarily releases Alt before sending Ctrl+Tab/Ctrl+Shift+Tab to avoid Windows Alt+Tab UI.
+- Feedback implemented in thorium-tabs 0.1.2: Alt+right-click now also consumes the matching right-button release to prevent the browser context menu.
+- Remaining manual validation: confirm taskbar middle-click over icons opens a new app window instead of muting; confirm Thorium Alt+wheel no longer opens Windows Alt+Tab and switches tabs correctly; confirm Alt+RMB reopens the closed tab without opening the context menu.

@@ -291,7 +291,42 @@ Example target shape:
 
 ---
 
-## 12. Design rules for authors
+## 12. Pattern: resident helper modules
+
+Use a resident helper when a module must keep working while rMenu is closed, for example global mouse hooks, background watchers, or helper daemons.
+
+Resident helpers are declared in directory/rpack `module.toml` files:
+
+```toml
+[resident]
+enabled = true
+command = "bin/my-helper.exe"
+autostart = true
+shutdown = "kill"
+```
+
+Authoring rules:
+
+- Keep feature logic in the helper, not in rMenu core.
+- Use a relative `command` path inside the module directory.
+- Do not use absolute paths or `..` traversal.
+- Assume the daemon supplies generic context args such as `--module-name`, `--module-dir`, and `--state-dir`.
+- Store mutable user/helper data under the supplied state directory.
+- Run without a visible console.
+- Handle process termination cleanly; v1 daemon shutdown may terminate the helper process.
+- If the helper installs global hooks, document exactly what it intercepts.
+- Keep a normal `module.js` entry for metadata, commands, help, or optional UI items, but do not depend on rMenu being open for resident behavior.
+
+Examples of good resident rpack boundaries:
+
+- `taskbar-volume`: helper handles taskbar wheel/middle-click volume control.
+- `thorium-tabs`: helper handles Thorium-only mouse gestures.
+
+In both cases rMenu core only starts/stops helpers; it does not know about volume, taskbars, Thorium, or browser tabs.
+
+---
+
+## 13. Design rules for authors
 
 1. Hooks must be fast and deterministic.
 2. Do not block on I/O without your own timeout.
@@ -306,10 +341,11 @@ Example target shape:
 10. Do not depend on core internals.
 11. Do not declare capabilities “just in case”.
 12. Test with `--modules-debug`.
+13. For resident helpers, test daemon startup, daemon quit, install/update, and uninstall lifecycle.
 
 ---
 
-## 13. IPC validation and safety
+## 14. IPC validation and safety
 
 The runtime may trim, normalize, or discard:
 

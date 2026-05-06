@@ -58,6 +58,39 @@ priority = 0
 - `author` — optional author metadata.
 - `homepage` — optional URL or project reference.
 
+### Optional `[resident]` section
+
+Directory/rpack modules may declare one resident helper process. Resident helpers are native/background tools managed by `rmenu-daemon`; they are not ordinary query-time JavaScript hooks.
+
+Example:
+
+```toml
+[resident]
+enabled = true
+command = "bin/taskbar-volume.exe"
+autostart = true
+shutdown = "kill"
+```
+
+Fields:
+
+- `enabled` — optional boolean, default `false`. If false or missing, no resident helper is started.
+- `command` — required when resident is enabled. Path to helper executable relative to the module directory. Absolute paths and `..` traversal are invalid.
+- `args` — optional array of static arguments. Dynamic module context is supplied by the daemon separately.
+- `autostart` — optional boolean, default `true`. If true, `rmenu-daemon` starts the helper when the module is installed/enabled.
+- `shutdown` — optional string. Initial v1 value is `kill`, meaning the daemon terminates the child process on shutdown/sync removal.
+
+Daemon-supplied helper context should be generic and feature-agnostic:
+
+```text
+--module-name <name>
+--module-dir <path>
+--state-dir <path>
+--config-path <path>   # when available
+```
+
+Resident helpers are suitable for background features such as mouse hooks, small helper daemons, or OS integrations. The rMenu core owns lifecycle only; feature-specific behavior remains in the helper/rpack.
+
 ---
 
 ## 5. Capabilities
@@ -108,6 +141,7 @@ The loader must validate at least:
 6. `capabilities` present and parseable.
 7. module names are unique.
 8. path traversal is rejected for entry files.
+9. if `[resident]` is enabled, resident command paths are relative and do not traverse outside the module directory.
 
 ---
 
@@ -124,6 +158,8 @@ When a directory module changes:
 
 No complex state migration exists in v1.
 
+For resident helpers, hot reload or `/rmods` updates should cause the daemon helper manager to sync desired helper state: start new helpers, stop removed/disabled helpers, and restart changed helpers when practical.
+
 ---
 
 ## 9. Security model
@@ -133,6 +169,8 @@ No complex state migration exists in v1.
 - Runtime enforces capabilities.
 - External host isolates module execution.
 - IPC payloads are validated by the core.
+- Resident helpers are native processes and may request broad OS access such as global hooks. They must be treated as install-time trust decisions and reviewed before installation.
+- The core must not embed resident helper feature logic. It only manages helper lifecycle based on manifest metadata.
 
 ---
 
@@ -141,4 +179,5 @@ No complex state migration exists in v1.
 - `api_version = 1` is required for v1 modules.
 - `kind = "script"` is the only official v1 kind.
 - Additive optional fields may be ignored by older loaders.
+- Older loaders that ignore `[resident]` will still load the JavaScript module but will not start its helper.
 - Incompatible changes require a new API version or spec.
