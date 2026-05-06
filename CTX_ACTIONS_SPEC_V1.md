@@ -60,6 +60,7 @@ Rules:
 
 - `log` integrates with module observability.
 - `toast` is a request for user feedback; the core may ignore or coalesce it.
+- Toast feedback uses `rmenu` visual language rather than native Windows notification styling when rendered by the launcher.
 - Utilities must not expose UI internals.
 
 ---

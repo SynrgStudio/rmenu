@@ -1,5 +1,7 @@
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
@@ -10,6 +12,9 @@ use super::ipc::{
     IpcKeyEvent, IpcSnapshot, ModuleInitPayload,
 };
 use super::types::ModuleDescriptor;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug)]
 pub enum HostClientError {
@@ -28,6 +33,12 @@ pub struct ExternalModuleHost {
     max_ipc_payload_bytes: usize,
 }
 
+impl Drop for ExternalModuleHost {
+    fn drop(&mut self) {
+        self.force_kill();
+    }
+}
+
 impl ExternalModuleHost {
     pub fn start(
         descriptor: &ModuleDescriptor,
@@ -36,11 +47,16 @@ impl ExternalModuleHost {
     ) -> Result<Self, HostClientError> {
         let host_bin = module_host_binary_path()?;
 
-        let mut child = Command::new(host_bin)
+        let mut command = Command::new(host_bin);
+        command
             .env("RMODULE_MAX_IPC_BYTES", max_ipc_payload_bytes.to_string())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+
+        let mut child = command
             .spawn()
             .map_err(|err| HostClientError::Io(err.to_string()))?;
 
@@ -70,6 +86,8 @@ impl ExternalModuleHost {
             version: descriptor.version.clone(),
             api_version: descriptor.api_version,
             capabilities: descriptor.capabilities.clone(),
+            source_path: descriptor.source_path.clone(),
+            state_dir: module_state_dir(descriptor),
             entry_code: descriptor.entry_code.clone(),
             config_json: descriptor.config_json.clone(),
         };
@@ -393,6 +411,23 @@ mod tests {
         );
         host.force_kill();
     }
+}
+
+fn module_state_dir(descriptor: &ModuleDescriptor) -> Option<String> {
+    let source_path = Path::new(&descriptor.source_path);
+    let modules_dir = match descriptor.source_type {
+        super::types::ModuleSourceType::Directory => source_path.parent(),
+        super::types::ModuleSourceType::Rmod => source_path.parent(),
+    }?;
+    let data_dir = modules_dir.parent()?;
+    Some(
+        data_dir
+            .join("state")
+            .join("modules")
+            .join(&descriptor.name)
+            .to_string_lossy()
+            .to_string(),
+    )
 }
 
 fn module_host_binary_path() -> Result<PathBuf, HostClientError> {

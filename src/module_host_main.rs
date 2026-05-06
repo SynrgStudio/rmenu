@@ -2,6 +2,8 @@
 mod ipc;
 
 use std::io::{self, BufRead, BufReader, Write};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use ipc::{
@@ -11,6 +13,8 @@ use ipc::{
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_MAX_IPC_PAYLOAD_BYTES: usize = 256 * 1024;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 struct HostState {
     module: Option<ModuleInitPayload>,
@@ -35,6 +39,8 @@ impl Default for HostState {
 enum WorkerRequest {
     #[serde(rename = "init")]
     Init {
+        source_path: String,
+        state_dir: Option<String>,
         entry_code: String,
         config_json: Option<String>,
     },
@@ -68,13 +74,18 @@ struct NodeRuntime {
 
 impl NodeRuntime {
     fn start(module: &ModuleInitPayload, max_ipc_payload_bytes: usize) -> Result<Self, String> {
-        let mut child = Command::new("node")
+        let mut command = Command::new("node");
+        command
             .arg("--input-type=module")
             .arg("-e")
             .arg(node_bridge_script())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+
+        let mut child = command
             .spawn()
             .map_err(|err| format!("cannot spawn node: {err}"))?;
 
@@ -95,6 +106,8 @@ impl NodeRuntime {
 
         let init_response = runtime.send(
             WorkerRequest::Init {
+                source_path: module.source_path.clone(),
+                state_dir: module.state_dir.clone(),
                 entry_code: module.entry_code.clone(),
                 config_json: module.config_json.clone(),
             },
@@ -449,6 +462,19 @@ import readline from 'node:readline';
 
 let moduleInstance = null;
 let moduleConfig = null;
+let moduleSourcePath = '';
+let moduleStateDir = '';
+
+function moduleDir() {
+  if (!moduleSourcePath) return '';
+  const value = String(moduleSourcePath);
+  const normalized = value.replace(/\\/g, '/');
+  if (normalized.endsWith('.rmod')) {
+    const index = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+    return index >= 0 ? value.slice(0, index) : '';
+  }
+  return value;
+}
 
 function createCtx(configObj, snapshotObj) {
   const actions = [];
@@ -465,7 +491,10 @@ function createCtx(configObj, snapshotObj) {
     mode: () => typeof snapshot.mode === 'string' ? snapshot.mode : 'launcher',
     hasCapability: () => false,
     log: noop,
-    toast: noop,
+    toast: (message) => actions.push({
+      type: 'Toast',
+      data: { text: typeof message === 'string' ? message : String(message ?? '') }
+    }),
     setQuery: (text) => actions.push({
       type: 'SetQuery',
       data: { text: typeof text === 'string' ? text : String(text ?? '') }
@@ -493,7 +522,10 @@ function createCtx(configObj, snapshotObj) {
       });
     },
     clearInputAccessory: () => actions.push({ type: 'ClearInputAccessory' }),
-    moduleConfig: () => configObj
+    moduleConfig: () => configObj,
+    moduleSourcePath: () => moduleSourcePath,
+    moduleDir: () => moduleDir(),
+    moduleStateDir: () => moduleStateDir
   };
 }
 
@@ -502,6 +534,8 @@ async function handleMessage(raw) {
 
   if (message.type === 'init') {
     moduleConfig = message.config_json ? JSON.parse(message.config_json) : null;
+    moduleSourcePath = typeof message.source_path === 'string' ? message.source_path : '';
+    moduleStateDir = typeof message.state_dir === 'string' ? message.state_dir : '';
     const moduleDataUrl = 'data:text/javascript;base64,' + Buffer.from(message.entry_code, 'utf8').toString('base64');
     const loaded = await import(moduleDataUrl);
     const createModule = loaded.default;

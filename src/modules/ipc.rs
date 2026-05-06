@@ -47,6 +47,8 @@ pub struct ModuleInitPayload {
     pub version: String,
     pub api_version: u32,
     pub capabilities: Vec<String>,
+    pub source_path: String,
+    pub state_dir: Option<String>,
     pub entry_code: String,
     pub config_json: Option<String>,
 }
@@ -75,6 +77,7 @@ pub enum IpcAction {
     SetInputAccessory(IpcInputAccessory),
     ClearInputAccessory,
     ReplaceItems { items: Vec<IpcItem> },
+    Toast { text: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

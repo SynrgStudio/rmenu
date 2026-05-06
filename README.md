@@ -80,6 +80,8 @@ cargo build --release
 Binary output:
 
 - `target/release/rmenu.exe`
+- `target/release/rmenu-daemon.exe`
+- `target/release/rmenu-module-host.exe`
 
 ---
 
@@ -103,6 +105,132 @@ rmenu.exe
 rmenu.exe -e "Item A,Item B,Item C" -p "Pick one"
 ```
 
+### Resident daemon / global hotkey
+
+`rmenu-daemon.exe` is the resident launcher helper. It registers a global hotkey and keeps rmenu state/modules prewarmed in the daemon process so the hotkey can show the launcher without cold-starting external module hosts every time. The default hotkey is `Ctrl+Shift+Space`.
+
+Development example from the repository root:
+
+```powershell
+target\debug\rmenu-daemon.exe --hotkey "ctrl+shift+space" --rmenu "C:\rMenu\target\debug\rmenu.exe" --modules-dir "C:\rMenu\modules"
+```
+
+`--rmenu` is retained for startup command compatibility. In resident-prewarmed mode the daemon does not spawn `rmenu.exe` for every hotkey press.
+
+Install current daemon command for user startup:
+
+```powershell
+target\debug\rmenu-daemon.exe --hotkey "ctrl+shift+space" --rmenu "C:\rMenu\target\debug\rmenu.exe" --modules-dir "C:\rMenu\modules" --install-startup
+```
+
+Stop a running daemon:
+
+```powershell
+target\debug\rmenu-daemon.exe --quit
+```
+
+Remove startup entry:
+
+```powershell
+target\debug\rmenu-daemon.exe --uninstall-startup
+```
+
+Daemon logs are written to:
+
+```text
+%APPDATA%\rmenu\rmenu-daemon.log
+```
+
+### Persistent data root model
+
+rMenu uses a persistent data root for modules, companions, config, and state. The default Windows data root is `C:\rMenuData`. The target layout is:
+
+```text
+<data_dir>\
+  modules\
+  companions\
+    rsnip\
+      rsnip.exe
+      config\
+      state\
+      logs\
+  config\
+  state\
+```
+
+Default module discovery derives from `<data_dir>\modules`. Existing `--modules-dir` and `RMENU_MODULES_DIR` remain explicit overrides for development, debugging, and migration.
+
+RSnip and RTasks are native companions. rMenu-managed installs use:
+
+```text
+<data_dir>\companions\rsnip\rsnip.exe
+<data_dir>\companions\rtasks\rtasks.exe
+```
+
+RSnip aliases are intentionally minimal:
+
+```text
+snip  screenshot region
+rec   screen recording
+ocr   OCR region
+```
+
+RTasks integrates as an embedded rMenu task-capture mode:
+
+```text
+t comprar pan mañana
+```
+
+While the input starts with `t `, `Alt+1/2/3` toggles `TODO/DOING/DONE`, and `Alt+Q/W/E` toggles high/medium/low priority. `tasks` opens the RTasks panel/task list. `Ctrl+Space` opens the RTasks panel when the daemon is running.
+
+Future installer UX should allow selecting an existing data folder, defaulting to `C:\rMenuData`, and reuse its existing modules, companions, config, and state without overwriting them.
+
+See `docs/companion-and-rmods-workflow.md` for the full companion, `/rmods`, `rpack`, module-state, and color-picker workflow.
+
+### `/rmods` registry workflow
+
+rMenu includes a core-owned `/rmods` command for installing `.rmod` single-file modules and `rpack` folder modules from a GitHub registry repository. The registry repository layout is:
+
+```text
+rmenu-rmods/
+  modules/
+    example.rmod
+  rpacks/
+    shortcuts/
+      module.toml
+      module.js
+      config.json
+      README.md
+  registry.json
+  scripts/
+    generate-registry.*
+  .github/
+    workflows/
+      update-registry.yml
+```
+
+`registry.json` is generated automatically by GitHub Actions from `modules/*.rmod` and `rpacks/*` folders; it is not edited by hand. `/rmods` fetches that generated registry, shows available/installed/updateable modules, verifies SHA-256 before install, installs atomically into `<data_dir>\modules`, and reloads modules.
+
+Current controls:
+
+```text
+/rmods     open registry list
+Up/Down    move cursor
+Space      mark/unmark a module for change (`[/]`)
+F5/Ctrl+R  refresh registry
+Ctrl+U     select update-available modules
+Enter      apply pending installs/updates/removals
+Esc        close rMenu
+```
+
+Default registry:
+
+```text
+https://raw.githubusercontent.com/SynrgStudio/rmods/main/registry.json
+```
+
+See `docs/rmods-registry.md` for the repository layout/schema and `docs/companion-and-rmods-workflow.md` for the end-to-end user workflow.
+
 ---
 
 ## CLI options
@@ -123,6 +251,9 @@ Configuration and Behavior Options:
   --debug-ranking <QUERY> Print ranking breakdown (fuzzy + source boost) and exit.
   --metrics               Print startup/UI/search/dataset metrics and exit.
   --modules-debug         Print module descriptors/hosts/telemetry and exit.
+  --modules-dir <PATH>    Override module discovery directory for this run.
+  --data-dir <PATH>       Persistent rMenu data root (modules/companions/config/state).
+  --install <NAME>        Install native companion (rsnip/rtasks latest GitHub release).
   --reindex               Force index rebuild (ignore cache for this run).
   -h, --help              Show this help.
 
@@ -223,6 +354,14 @@ Runtime commands inside `rmenu`:
 /modules.list
 /modules.telemetry.reset
 ```
+
+Module discovery can be overridden for development or portable installs:
+
+```powershell
+rmenu.exe --modules-dir .\modules --modules-debug
+```
+
+Resolution order is: `--modules-dir`, `RMENU_MODULES_DIR`, `%APPDATA%\rmenu\modules`, `modules` next to `rmenu.exe`, then cwd `modules` as a development fallback.
 
 Module documentation:
 

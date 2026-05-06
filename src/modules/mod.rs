@@ -11,7 +11,10 @@ pub mod rmod;
 pub mod state;
 pub mod types;
 
+use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::env;
+use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -21,6 +24,8 @@ use ipc::{IpcAction, IpcInputAccessory, IpcItem, IpcKeyEvent, IpcSnapshot};
 use loader::discover_module_descriptors;
 
 use crate::app_state::{AppState, LauncherItem, LauncherSource};
+use crate::rsnip_companion::{install_rsnip_latest, RsnipCompanion};
+use crate::rtasks_companion::{install_rtasks_latest, RtasksCompanion};
 
 use actions::{apply_action_request, ActionRuntimeView};
 use context::{ModuleActionRequest, ModuleCtx, ModuleSnapshot};
@@ -405,7 +410,7 @@ impl ModuleRuntime {
         self.sync_loaded_modules_state();
     }
 
-    pub fn runtime_command(&mut self, command: &str, silent_mode: bool) -> bool {
+    pub fn runtime_command(&mut self, command: &str, args: &[String], silent_mode: bool) -> bool {
         match command {
             "modules.reload" => {
                 self.reload_external_descriptors(silent_mode);
@@ -444,6 +449,46 @@ impl ModuleRuntime {
                         priority: 100,
                     },
                 ));
+                true
+            }
+            "install"
+                if args
+                    .first()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("rsnip")) =>
+            {
+                let accessory = match install_rsnip_latest() {
+                    Ok(path) => ModuleInputAccessory {
+                        text: format!("RSnip installed: {}", path.display()),
+                        kind: InputAccessoryKind::Success,
+                        priority: 100,
+                    },
+                    Err(err) => ModuleInputAccessory {
+                        text: format!("RSnip install failed: {err:?}"),
+                        kind: InputAccessoryKind::Error,
+                        priority: 100,
+                    },
+                };
+                self.state.active_input_accessory = Some(("runtime".to_string(), accessory));
+                true
+            }
+            "install"
+                if args
+                    .first()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("rtasks")) =>
+            {
+                let accessory = match install_rtasks_latest() {
+                    Ok(path) => ModuleInputAccessory {
+                        text: format!("RTasks installed: {}", path.display()),
+                        kind: InputAccessoryKind::Success,
+                        priority: 100,
+                    },
+                    Err(err) => ModuleInputAccessory {
+                        text: format!("RTasks install failed: {err:?}"),
+                        kind: InputAccessoryKind::Error,
+                        priority: 100,
+                    },
+                };
+                self.state.active_input_accessory = Some(("runtime".to_string(), accessory));
                 true
             }
             "modules.telemetry.reset" => {
@@ -739,13 +784,13 @@ impl ModuleRuntime {
         command: &str,
         args: &[String],
         silent_mode: bool,
-    ) {
-        if self.runtime_command(command, silent_mode) {
-            return;
+    ) -> bool {
+        if self.runtime_command(command, args, silent_mode) {
+            return true;
         }
 
         let Some(route) = self.resolve_command_route(command, silent_mode) else {
-            return;
+            return false;
         };
 
         for module in &mut self.modules {
@@ -828,6 +873,8 @@ impl ModuleRuntime {
         for module_name in failed_hosts {
             self.restart_external_host(&module_name, silent_mode);
         }
+
+        true
     }
 
     pub fn decorate_items(
@@ -931,6 +978,21 @@ impl ModuleRuntime {
             .map(|(_, accessory)| accessory.clone())
     }
 
+    pub fn set_runtime_feedback(&mut self, text: impl Into<String>, kind: InputAccessoryKind) {
+        self.state.active_input_accessory = Some((
+            "runtime".to_string(),
+            ModuleInputAccessory {
+                text: text.into(),
+                kind,
+                priority: 100,
+            },
+        ));
+    }
+
+    pub fn clear_runtime_feedback(&mut self) {
+        self.state.active_input_accessory = None;
+    }
+
     pub fn items_replaced_in_cycle(&self) -> bool {
         self.state.items_replaced_in_cycle
     }
@@ -940,6 +1002,7 @@ impl ModuleRuntime {
         out.push_str("rmenu modules debug\n");
         out.push_str(&format!("- api_version: {}\n", self.api_version()));
         out.push_str(&format!("- builtin_modules: {}\n", self.modules.len()));
+        out.push_str(&format!("- modules_dir: {}\n", self.modules_dir.display()));
         out.push_str(&format!(
             "- external_descriptors: {}\n",
             self.external_descriptors.len()
@@ -1363,6 +1426,7 @@ impl ModuleRuntime {
                         .collect();
                     ctx.replace_items(sanitized);
                 }
+                IpcAction::Toast { text } => ctx.toast(text),
             }
         }
         Self::apply_ctx_requests(
@@ -1372,6 +1436,28 @@ impl ModuleRuntime {
             state,
             allowed_capabilities,
         );
+    }
+
+    fn apply_toast_requests(
+        module_name: &str,
+        ctx: &mut ModuleCtx,
+        state: &mut ModuleRuntimeState,
+    ) {
+        for toast in ctx.take_toasts() {
+            let text = sanitize_single_line_string(toast, IPC_ITEM_MAX_HINT_LEN);
+            if text.is_empty() {
+                continue;
+            }
+
+            state.active_input_accessory = Some((
+                module_name.to_string(),
+                ModuleInputAccessory {
+                    text,
+                    kind: InputAccessoryKind::Info,
+                    priority: 10_000,
+                },
+            ));
+        }
     }
 
     fn apply_ctx_requests(
@@ -1391,6 +1477,8 @@ impl ModuleRuntime {
                 .collect(),
             selected_index: app_state.selected_index,
         };
+
+        Self::apply_toast_requests(module_name, ctx, state);
 
         for request in ctx.take_action_requests() {
             if let Some(capability) = required_capability_for_action(&request) {
@@ -1932,6 +2020,405 @@ impl RuntimeModule for BuiltinLifecycleModule {
 #[derive(Default)]
 pub struct BuiltinQueryProviderModule;
 
+#[derive(Default)]
+pub struct BuiltinRsnipCompanionModule;
+
+#[derive(Default)]
+pub struct BuiltinRtasksCompanionModule;
+
+impl BuiltinRsnipCompanionModule {
+    fn definitions() -> [(
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static [&'static str],
+    ); 3] {
+        [
+            (
+                "snip",
+                "RSnip screenshot region",
+                "rsnip:snip",
+                "snip",
+                &["snip"],
+            ),
+            (
+                "record",
+                "RSnip screen recording",
+                "rsnip:record",
+                "rec",
+                &["rec"],
+            ),
+            (
+                "ocr",
+                "RSnip OCR screen region",
+                "rsnip:ocr",
+                "ocr",
+                &["ocr"],
+            ),
+        ]
+    }
+
+    fn item_for_definition(
+        id: &str,
+        title: &str,
+        target: &str,
+        badge: &str,
+        rsnip_available: bool,
+    ) -> ModuleItem {
+        if rsnip_available {
+            return ModuleItem {
+                id: format!("rsnip::{id}"),
+                title: title.to_string(),
+                subtitle: Some("RSnip companion".to_string()),
+                source: Some("module_provider".to_string()),
+                action: ModuleAction::LaunchTarget {
+                    target: target.to_string(),
+                },
+                capabilities: ModuleItemCapabilities::default(),
+                decorations: ModuleItemDecorations {
+                    badge: Some(badge.to_string()),
+                    badge_kind: Some(BadgeKind::Tag),
+                    hint: Some(target.to_string()),
+                    icon: None,
+                },
+            };
+        }
+
+        ModuleItem {
+            id: format!("rsnip::{id}::missing"),
+            title: "RSnip companion not installed".to_string(),
+            subtitle: Some("Install RSnip to enable snip/record/OCR".to_string()),
+            source: Some("module_provider".to_string()),
+            action: ModuleAction::Noop,
+            capabilities: ModuleItemCapabilities::default(),
+            decorations: ModuleItemDecorations {
+                badge: Some("missing".to_string()),
+                badge_kind: Some(BadgeKind::Status),
+                hint: None,
+                icon: None,
+            },
+        }
+    }
+
+    fn exact_alias_item(query: &str) -> Option<ModuleItem> {
+        let raw = query.trim().to_ascii_lowercase();
+        let rsnip_available = RsnipCompanion::discover().is_ok();
+        for (id, title, target, badge, aliases) in Self::definitions() {
+            if aliases.iter().any(|alias| *alias == raw) {
+                return Some(Self::item_for_definition(
+                    id,
+                    title,
+                    target,
+                    badge,
+                    rsnip_available,
+                ));
+            }
+        }
+        None
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RtasksTaskRecord {
+    id: String,
+    title: String,
+    #[serde(default)]
+    status: Option<RtasksTaskStatus>,
+    #[serde(default)]
+    priority: Option<RtasksPriority>,
+    #[serde(default)]
+    due: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum RtasksTaskStatus {
+    Todo,
+    Doing,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum RtasksPriority {
+    Low,
+    Medium,
+    High,
+}
+
+impl BuiltinRtasksCompanionModule {
+    fn definitions() -> [(
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static [&'static str],
+    ); 1] {
+        [("panel", "RTasks panel", "rtasks:panel", "tasks", &["tasks"])]
+    }
+
+    fn item_for_definition(
+        id: &str,
+        title: &str,
+        target: &str,
+        badge: &str,
+        rtasks_available: bool,
+    ) -> ModuleItem {
+        if rtasks_available {
+            return ModuleItem {
+                id: format!("rtasks::{id}"),
+                title: title.to_string(),
+                subtitle: Some("RTasks companion".to_string()),
+                source: Some("module_provider".to_string()),
+                action: ModuleAction::LaunchTarget {
+                    target: target.to_string(),
+                },
+                capabilities: ModuleItemCapabilities::default(),
+                decorations: ModuleItemDecorations {
+                    badge: Some(badge.to_string()),
+                    badge_kind: Some(BadgeKind::Tag),
+                    hint: Some(target.to_string()),
+                    icon: None,
+                },
+            };
+        }
+
+        ModuleItem {
+            id: format!("rtasks::{id}::missing"),
+            title: "RTasks companion not installed".to_string(),
+            subtitle: Some("Install RTasks to enable task capture/panel".to_string()),
+            source: Some("module_provider".to_string()),
+            action: ModuleAction::Noop,
+            capabilities: ModuleItemCapabilities::default(),
+            decorations: ModuleItemDecorations {
+                badge: Some("missing".to_string()),
+                badge_kind: Some(BadgeKind::Status),
+                hint: None,
+                icon: None,
+            },
+        }
+    }
+
+    fn exact_alias_item(query: &str) -> Option<ModuleItem> {
+        let raw = query.trim().to_ascii_lowercase();
+        let rtasks_available = RtasksCompanion::discover().is_ok();
+        for (id, title, target, badge, aliases) in Self::definitions() {
+            if aliases.iter().any(|alias| *alias == raw) {
+                return Some(Self::item_for_definition(
+                    id,
+                    title,
+                    target,
+                    badge,
+                    rtasks_available,
+                ));
+            }
+        }
+        None
+    }
+
+    fn tasks_file_path() -> Option<PathBuf> {
+        env::var_os("APPDATA")
+            .map(|appdata| PathBuf::from(appdata).join("rtasks").join("tasks.jsonl"))
+    }
+
+    fn load_tasks() -> Vec<RtasksTaskRecord> {
+        let Some(path) = Self::tasks_file_path() else {
+            return Vec::new();
+        };
+        let Ok(contents) = fs::read_to_string(path) else {
+            return Vec::new();
+        };
+
+        contents
+            .lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                serde_json::from_str::<RtasksTaskRecord>(trimmed).ok()
+            })
+            .collect()
+    }
+
+    fn task_items(query: &str) -> Vec<ModuleItem> {
+        let raw = query.trim().to_ascii_lowercase();
+        let task_query = raw.strip_prefix("tasks ").unwrap_or(&raw).trim();
+
+        let show_all_tasks = raw == "tasks" || raw.starts_with("tasks ");
+        if !show_all_tasks {
+            return Vec::new();
+        }
+
+        let mut tasks = Self::load_tasks();
+        tasks.sort_by(|left, right| {
+            Self::status_rank(left.status)
+                .cmp(&Self::status_rank(right.status))
+                .then_with(|| {
+                    Self::priority_rank(right.priority).cmp(&Self::priority_rank(left.priority))
+                })
+                .then_with(|| left.created_at.cmp(&right.created_at))
+        });
+
+        tasks
+            .into_iter()
+            .filter(|task| {
+                if task_query.is_empty() || task_query == "tasks" {
+                    return true;
+                }
+                task.title.to_ascii_lowercase().contains(task_query)
+            })
+            .take(12)
+            .map(Self::item_for_task)
+            .collect()
+    }
+
+    fn item_for_task(task: RtasksTaskRecord) -> ModuleItem {
+        let status = Self::status_text(task.status);
+        let priority = Self::priority_text(task.priority);
+        let mut subtitle_parts = vec![status.to_string(), priority.to_string()];
+        if let Some(due) = task.due.filter(|value| !value.trim().is_empty()) {
+            subtitle_parts.push(format!("due {due}"));
+        }
+
+        ModuleItem {
+            id: format!("rtasks::task::{}", task.id),
+            title: task.title,
+            subtitle: Some(subtitle_parts.join(" · ")),
+            source: Some("module_provider".to_string()),
+            action: ModuleAction::LaunchTarget {
+                target: "rtasks:panel".to_string(),
+            },
+            capabilities: ModuleItemCapabilities::default(),
+            decorations: ModuleItemDecorations {
+                badge: Some(status.to_string()),
+                badge_kind: Some(BadgeKind::Status),
+                hint: Some(priority.to_string()),
+                icon: None,
+            },
+        }
+    }
+
+    fn status_rank(status: Option<RtasksTaskStatus>) -> u8 {
+        match status {
+            None | Some(RtasksTaskStatus::Todo) => 0,
+            Some(RtasksTaskStatus::Doing) => 1,
+            Some(RtasksTaskStatus::Done) => 2,
+        }
+    }
+
+    fn priority_rank(priority: Option<RtasksPriority>) -> u8 {
+        match priority {
+            Some(RtasksPriority::High) => 2,
+            None | Some(RtasksPriority::Medium) => 1,
+            Some(RtasksPriority::Low) => 0,
+        }
+    }
+
+    fn status_text(status: Option<RtasksTaskStatus>) -> &'static str {
+        match status {
+            None | Some(RtasksTaskStatus::Todo) => "TODO",
+            Some(RtasksTaskStatus::Doing) => "DOING",
+            Some(RtasksTaskStatus::Done) => "DONE",
+        }
+    }
+
+    fn priority_text(priority: Option<RtasksPriority>) -> &'static str {
+        match priority {
+            Some(RtasksPriority::High) => "HIGH",
+            None | Some(RtasksPriority::Medium) => "MED",
+            Some(RtasksPriority::Low) => "LOW",
+        }
+    }
+}
+
+impl RuntimeModule for BuiltinRtasksCompanionModule {
+    fn name(&self) -> &str {
+        "builtin.rtasks-companion"
+    }
+
+    fn on_load(&mut self, ctx: &mut ModuleCtx) {
+        ctx.register_provider(ModuleProviderDef {
+            name: "rtasks-companion".to_string(),
+            priority: 19,
+        });
+    }
+
+    fn on_query_change(&mut self, query: &str, ctx: &mut ModuleCtx) {
+        let task_items = Self::task_items(query);
+        if !task_items.is_empty() {
+            ctx.replace_items(task_items);
+            return;
+        }
+
+        if let Some(item) = Self::exact_alias_item(query) {
+            ctx.replace_items(vec![item]);
+        }
+    }
+
+    fn provide_items(&mut self, query: &str, _ctx: &mut ModuleCtx) -> Vec<ModuleItem> {
+        let raw = query.trim().to_ascii_lowercase();
+        if raw.is_empty()
+            || Self::exact_alias_item(&raw).is_some()
+            || !Self::task_items(&raw).is_empty()
+        {
+            return Vec::new();
+        }
+
+        let rtasks_available = RtasksCompanion::discover().is_ok();
+        Self::definitions()
+            .iter()
+            .filter(|(_, title, _, badge, aliases)| {
+                aliases.iter().any(|alias| alias.starts_with(&raw))
+                    || title.to_ascii_lowercase().contains(&raw)
+                    || badge.starts_with(&raw)
+            })
+            .map(|(id, title, target, badge, _)| {
+                Self::item_for_definition(id, title, target, badge, rtasks_available)
+            })
+            .collect()
+    }
+}
+
+impl RuntimeModule for BuiltinRsnipCompanionModule {
+    fn name(&self) -> &str {
+        "builtin.rsnip-companion"
+    }
+
+    fn on_load(&mut self, ctx: &mut ModuleCtx) {
+        ctx.register_provider(ModuleProviderDef {
+            name: "rsnip-companion".to_string(),
+            priority: 20,
+        });
+    }
+
+    fn on_query_change(&mut self, query: &str, ctx: &mut ModuleCtx) {
+        if let Some(item) = Self::exact_alias_item(query) {
+            ctx.replace_items(vec![item]);
+        }
+    }
+
+    fn provide_items(&mut self, query: &str, _ctx: &mut ModuleCtx) -> Vec<ModuleItem> {
+        let raw = query.trim().to_ascii_lowercase();
+        if raw.is_empty() || Self::exact_alias_item(&raw).is_some() {
+            return Vec::new();
+        }
+
+        let rsnip_available = RsnipCompanion::discover().is_ok();
+        Self::definitions()
+            .iter()
+            .filter(|(_, title, _, badge, aliases)| {
+                aliases.iter().any(|alias| alias.starts_with(&raw))
+                    || title.to_ascii_lowercase().contains(&raw)
+                    || badge.starts_with(&raw)
+            })
+            .map(|(id, title, target, badge, _)| {
+                Self::item_for_definition(id, title, target, badge, rsnip_available)
+            })
+            .collect()
+    }
+}
+
 impl RuntimeModule for BuiltinQueryProviderModule {
     fn name(&self) -> &str {
         "builtin.query-provider"
@@ -2401,7 +2888,7 @@ mod tests {
         let mut runtime = ModuleRuntime::new();
         runtime.register_builtin_module(Box::new(BuiltinLifecycleModule));
 
-        let handled = runtime.runtime_command("modules.list", true);
+        let handled = runtime.runtime_command("modules.list", &[], true);
         assert!(handled);
 
         let text = runtime
@@ -2418,7 +2905,7 @@ mod tests {
             .host_telemetry
             .insert("mod.host".to_string(), HostTelemetry::default());
 
-        let handled = runtime.runtime_command("modules.telemetry.reset", true);
+        let handled = runtime.runtime_command("modules.telemetry.reset", &[], true);
         assert!(handled);
         assert!(runtime.host_telemetry.is_empty());
     }
@@ -2606,6 +3093,35 @@ export default function createModule() {}
                 .map(|(_, accessory)| accessory.text.as_str()),
             Some("allowed")
         );
+    }
+
+    #[test]
+    fn ipc_toast_sets_high_priority_feedback_without_accessory_capability() {
+        let mut app_state = AppState {
+            silent_mode: true,
+            ..Default::default()
+        };
+        let mut state = super::ModuleRuntimeState::default();
+        let allowed = BTreeSet::new();
+
+        ModuleRuntime::apply_ipc_actions(
+            "toast.module",
+            vec![IpcAction::Toast {
+                text: "helper missing".to_string(),
+            }],
+            &mut app_state,
+            &mut state,
+            Some(&allowed),
+        );
+
+        let accessory = state
+            .active_input_accessory
+            .as_ref()
+            .map(|(_, accessory)| accessory)
+            .expect("toast should set feedback accessory");
+        assert_eq!(accessory.text, "helper missing");
+        assert_eq!(accessory.kind, InputAccessoryKind::Info);
+        assert_eq!(accessory.priority, 10_000);
     }
 
     fn node_available() -> bool {
@@ -3021,7 +3537,7 @@ export default function createModule() {}
     fn runtime_command_reload_sets_feedback_accessory() {
         let mut runtime = ModuleRuntime::new();
 
-        let handled = runtime.runtime_command("modules.reload", true);
+        let handled = runtime.runtime_command("modules.reload", &[], true);
         assert!(handled);
 
         let text = runtime

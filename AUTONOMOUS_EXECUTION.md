@@ -1,51 +1,29 @@
 ---
-continuity_session: none
-created_at: 2026-04-25 08:58
-updated_at: 2026-04-25 10:40
-status: idle
-goal: none
-last_archived_session: CONT-2026-04-25-0858-wave0-packaging-release
-archive_path: docs/continuity/archive/CONT-2026-04-25-0858-wave0-packaging-release/
+continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
+created_at: 2026-05-04 19:45
+updated_at: 2026-05-04 19:45
+status: active
+goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
 
-# AUTONOMOUS_EXECUTION.md — rmenu
-
-Status: idle autonomous execution contract  
-Project: `rmenu`  
-Primary use: make Wave 0 packaging/release work continuable across chat sessions.
-
----
+# AUTONOMOUS_EXECUTION.md — rmenu AHK suite migration
 
 ## Purpose
 
-This file defines how an agent should execute the active continuable session for `rmenu`.
+This file defines the operating contract for the active continuable session.
 
-Active goal: none.
+Goal: migrate the existing `C:\tuicommandcenter\AHKFolder` AHK suite toward `rmenu` in the most native architecture possible, starting with core primitives and module foundations, then module implementations, helpers, and a future daemon for global hotkeys/hooks.
 
-Last archived session:
-
-```text
-CONT-2026-04-25-0858-wave0-packaging-release
-```
-
-Archive path:
-
-```text
-docs/continuity/archive/CONT-2026-04-25-0858-wave0-packaging-release/
-```
-
-The goal is to keep work moving until a real Definition of Done or a real stop condition is reached, while preserving safety, project rules, and restartability between sessions.
-
----
+The active work must remain auditable, pausable, resumable, and safe for parallel-agent work.
 
 ## Session metadata
 
 ```text
-continuity_session: CONT-2026-04-25-0858-wave0-packaging-release
-created_at: 2026-04-25 08:58
-updated_at: 2026-04-25 08:58
+continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
+created_at: 2026-05-04 19:45
+updated_at: 2026-05-04 19:45
 status: active
-goal: Preparar Wave 0 Packaging/release para rmenu post-freeze
+goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ```
 
 Managed files:
@@ -56,346 +34,271 @@ ACTIVE_QUEUE.md         = cola/tareas/dependencias
 STATE.md                = bitácora/checkpoints
 ```
 
----
-
 ## Source of truth
 
 Read in this order:
 
 1. System/developer instructions and project rules injected by the harness.
-2. `C:\Users\dnaon\.pi\agent\AGENTS.md` project rules when available in context.
+2. `C:\Users\dnaon\.pi\agent\AGENTS.md` rules when available in context.
 3. `AUTONOMOUS_EXECUTION.md`.
 4. `ACTIVE_QUEUE.md`.
 5. `STATE.md`.
-6. `CORE_FREEZE_V1.md`.
-7. `POST_FREEZE_ROADMAP.md`.
-8. `CORE_CLOSURE_CHECKLIST.md`.
-9. Root architecture/spec docs relevant to the current task:
+6. `codebase-report.md` generated for the AHK-to-rmenu migration.
+7. Root `rmenu` architecture/spec docs:
+   - `README.md`
    - `MODULES_ARCHITECTURE.md`
    - `MODULES_API_SPEC_V1.md`
+   - `CTX_ACTIONS_SPEC_V1.md`
    - `RMOD_SPEC_V1.md`
    - `MANIFEST_SPEC_V1.md`
-   - `CTX_ACTIONS_SPEC_V1.md`
-   - `PROVIDER_EXECUTION_POLICY.md`
-   - `ERROR_ISOLATION_POLICY.md`
    - `MODULES_CAPABILITIES_MATRIX.md`
    - `MODULES_AUTHORING_GUIDE.md`
    - `MODULES_OPERATIONS_GUIDE.md`
-   - `MODULES_QUICKSTART.md`
+   - `CORE_FREEZE_V1.md`
    - `DECISIONS.md`
-10. Code, workflows, docs, and release files relevant to the current task.
-
-If files conflict, obey the higher-priority source and document the conflict in the final report or `STATE.md`.
-
----
+8. AHK suite source when needed:
+   - `C:\tuicommandcenter\AHKFolder\Master.ahk`
+   - `C:\tuicommandcenter\AHKFolder\config.ahk`
+   - `C:\tuicommandcenter\AHKFolder\Modules\*.ahk`
+   - `C:\tuicommandcenter\AHKFolder\anytype.js`
+   - `C:\tuicommandcenter\AHKFolder\sniptool\*.py`
 
 ## Command chain
 
 ```text
-/init-cont  -> creates/updates this contract + state + active queue
-/plan-cont  -> refines ACTIVE_QUEUE.md with a deeper implementation plan
-/start-cont -> executes ACTIVE_QUEUE.md until DoD or stop condition
-/fin-cont   -> archives the continuity session and suggests a commit message
+/init-cont  -> create/refresh active continuity infrastructure
+/plan-cont  -> refine ACTIVE_QUEUE.md into an official implementation plan
+/start-cont -> execute the queue until DoD or real blocker
+/fin-cont   -> archive the session and suggest commit message
 ```
-
----
 
 ## Triggers
 
-Use this contract when the user says any of:
+This contract applies when the user invokes:
 
+- `/plan-cont`
 - `/start-cont`
-- `/start-cont Wave 0`
-- `start-cont`
-- `continúa en modo autónomo`
-- `ejecuta cola`
-- `no pares hasta terminar`
-- `continúa desde STATE.md`
-- `prepará packaging/release`
-
-If the user invokes `/init-cont`, update continuity infrastructure only; do not execute the long-running task unless separately asked.
-
----
+- `/fin-cont`
+- “continúa”
+- “ejecuta cola”
+- “arma el plan”
+- “no pares hasta terminar”
 
 ## Scope and autonomy level
 
-Autonomy level: high within Wave 0 packaging/release scope.
+Allowed scope for this session:
 
-The agent may, without asking:
+- Core platform changes that are general primitives for modules, not AHK-specific hacks.
+- Module path resolution for dev/debug and installed usage.
+- Module config/secrets conventions.
+- Item action primitives (`launch`, `command`, `copy`, `runas`) if validated by plan.
+- `onSubmit` implementation and submit outcome behavior.
+- JS bridge parity with documented module API.
+- Module feedback/log/toast/accessory behavior.
+- Initial `.rmod` modules replacing Command Center command surfaces.
+- Documentation/spec updates needed to keep v1 contract coherent.
+- Tests and validation for changed behavior.
 
-- inspect relevant docs/config/workflows;
-- create or update release documentation;
-- create `.github/workflows/release.yml`;
-- create `RELEASE_CHECKLIST.md`, `INSTALL.md`, `CHANGELOG.md`, and `docs/release/BINARY_SIGNING.md`;
-- update `README.md`, `POST_FREEZE_ROADMAP.md`, `STATE.md`, and related release docs;
-- define artifact layout and packaging policy;
-- define how demo modules are packaged as examples;
-- run allowed validation commands;
-- iterate on docs/workflow YAML errors when locally detectable.
+Out of immediate scope unless explicitly planned later:
 
-The agent must ask before:
+- Full AHK WindowManager port.
+- Permanent global hotkey daemon implementation.
+- TweetFlow implementation; keep as future module/helper placeholder.
+- Releasing/publishing artifacts.
 
-- changing core launcher/module runtime functionality;
-- changing public module API/v1 contracts;
-- adding dependencies;
-- adding MSI/auto-updater/installer behavior beyond documentation;
-- committing, pushing, rebasing, or staging files;
-- touching broad unrelated files if other agents may be working.
+Autonomy level:
 
----
+- Plan thoroughly.
+- Implement only after `/start-cont`.
+- Prefer incremental, testable changes.
+- Stop for user confirmation before removing intentional behavior or making breaking API decisions.
 
 ## Allowed actions
 
-Allowed during autonomous execution:
-
-- Read files with `read`.
-- Search with safe shell commands such as `rg`, `find`, `git diff`, `git status`.
-- Edit only Wave 0 task-relevant files.
-- Create focused docs/workflow files.
-- Update `ACTIVE_QUEUE.md`, `STATE.md`, `POST_FREEZE_ROADMAP.md`, and relevant docs.
-- Run validation commands listed below.
-
-Prefer small, verifiable increments over broad rewrites.
-
----
+- Read source/spec/docs relevant to the active task.
+- Edit only files required by the claimed task.
+- Add tests for changed behavior.
+- Run validation commands required by this repo.
+- Update `ACTIVE_QUEUE.md` and `STATE.md` at checkpoints.
+- Create modules under `modules/` when the plan reaches module implementation.
+- Create docs for migration decisions when core/module contracts change.
 
 ## Forbidden actions
 
-Do not do these unless the user explicitly asks and confirms override:
-
-- `git reset --hard`
-- `git checkout .`
-- `git clean -fd`
-- `git stash`
-- `git add -A`
-- `git add .`
-- `git commit --no-verify`
-- commit/push/rebase without explicit user request;
-- remove intentional functionality to silence errors;
-- downgrade dependencies;
-- add MSI/auto-updater complexity in Wave 0;
-- change frozen core behavior for release convenience;
-- package `shortcuts.rmod` with local user-specific targets as an active default module.
-
-Also obey all higher-level project rules from the harness/AGENTS context.
-
----
+- Do not commit unless the user explicitly asks.
+- Do not use `git add -A` or `git add .`.
+- Do not run destructive git commands:
+  - `git reset --hard`
+  - `git checkout .`
+  - `git clean -fd`
+  - `git stash`
+- Do not overwrite unrelated uncommitted changes from other agents.
+- Do not hardcode personal secrets/tokens into code, modules, examples, reports, or logs.
+- Do not move AHK-specific workflow into the `rmenu` core when it can live as module/helper/daemon.
+- Do not run `npm run dev`, `npm run build`, or `npm test` unless explicitly instructed by project rules for this repo. This repo is Rust; use Cargo validation.
 
 ## Validation commands
 
-Primary validation for this session:
+For Rust code changes, use targeted validation first, then broad validation when appropriate:
+
+```bash
+cargo fmt --check
+cargo check
+cargo test
+```
+
+When code was formatted, run:
 
 ```bash
 cargo fmt
-cargo test
 cargo check
-cargo build --release
+cargo test
 ```
 
-Useful release diagnostics, when relevant:
+For module/runtime changes, also run relevant diagnostics when possible:
 
 ```bash
-cargo run --bin rmenu -- --metrics
 cargo run --bin rmenu -- --modules-debug
-cargo run --bin rmenu -- --debug-ranking blender
-cargo run --bin rmenu -- --reindex --metrics
 ```
 
-GitHub Actions workflow validation is partially manual/local; full validation requires running the workflow on GitHub.
+For release-mode/performance-sensitive changes, only if requested or plan requires it:
 
----
+```bash
+cargo build --release
+cargo run --bin rmenu -- --metrics
+```
+
+No validation is required for documentation-only edits, but mention that validation was not run.
 
 ## Execution loop
 
 For `/start-cont`:
 
-1. Read `AUTONOMOUS_EXECUTION.md`.
-2. Read `ACTIVE_QUEUE.md`.
-3. Read `STATE.md`.
-4. Pick the first executable task by queue rules.
-5. Inspect only relevant docs/config/workflow/code.
-6. Implement the smallest safe change.
-7. Run task validation.
-8. If validation fails, debug root cause and iterate.
-9. Update `ACTIVE_QUEUE.md` and `STATE.md`.
-10. Continue with the next executable task.
-11. Stop only on DoD or a real stop condition.
-
-Do not stop merely because a partial batch of work is complete.
-
----
+1. Read `AUTONOMOUS_EXECUTION.md`, `ACTIVE_QUEUE.md`, and `STATE.md`.
+2. Pick first `pending` task whose dependencies are done.
+3. Mark it `in_progress`, claim it, and checkpoint in `STATE.md`.
+4. Implement the smallest coherent change.
+5. Run task validation.
+6. Fix failures before moving on.
+7. Mark task `done`, `partial`, or `blocked` with evidence.
+8. Update `STATE.md`.
+9. Continue until all DoD are complete or a real blocker appears.
 
 ## Stop conditions
 
-Stop only when one is true:
+Stop and report when:
 
-- Wave 0 DoD is complete;
-- user/product input is required;
-- GitHub-only validation is required and cannot be performed locally;
-- a required validation command is unavailable or fails due to environment;
-- tests/checks fail and root cause remains unclear after reasonable debugging;
-- continuing would require destructive action;
-- context limit is near and a checkpoint is needed;
-- work would require changing frozen core behavior or public API/v1 contract without explicit approval.
-
-Before stopping, update `STATE.md` and `ACTIVE_QUEUE.md` if possible.
-
----
+- A required decision is product/API-breaking and not already approved.
+- Validation fails and root cause cannot be fixed safely.
+- A file conflict appears in a file not touched by this session.
+- A task requires secrets, external API credentials, or paid services unavailable locally.
+- A command would be destructive or forbidden.
+- Disk space/toolchain/environment blocks validation.
 
 ## Checkpointing rules
 
-Before every autonomous stop, update `STATE.md` with:
+Update `STATE.md` after:
 
-- what was completed;
+- init/plan/start/finish transitions;
+- each completed task;
+- each blocker;
+- each validation run;
+- each scope-changing decision.
+
+Checkpoint entries must include:
+
+- timestamp;
+- task ID;
 - files changed;
-- validation commands run and results;
-- remaining blockers;
-- exact next recommended step;
-- whether user/manual input is needed.
-
-Update `ACTIVE_QUEUE.md` as follows:
-
-- mark `done` only when DoD and validation are satisfied;
-- mark `partial` if progress is validated but work remains;
-- mark `blocked` if user/manual/GitHub-only validation is required;
-- never mark manual validation complete unless it was actually performed or confirmed by the user.
-
----
+- validation result;
+- next step.
 
 ## Queue rules
 
-Status values:
-
-```text
-pending
-in_progress
-done
-blocked
-partial
-cancelled
-```
-
-Rules:
-
+- Status values: `pending`, `in_progress`, `done`, `blocked`, `partial`, `cancelled`.
 - Never renumber existing task IDs.
-- Pick first `pending` task whose dependencies are done.
-- Resume `in_progress` tasks claimed by this agent/session first.
-- Preserve claims unless stale or explicitly overridden.
-- Do not work on `blocked` or `cancelled` tasks.
-
----
+- Add new tasks with new IDs only.
+- Preserve completed task history.
+- Dependencies must be explicit.
+- Prefer small task DoD over large ambiguous tasks.
 
 ## Claim rules
 
-Before editing files for a task, update `ACTIVE_QUEUE.md`:
-
-```text
-Status: in_progress
-Claimed by: current-agent
-Started: YYYY-MM-DD HH:MM
-Last update: YYYY-MM-DD HH:MM
-```
-
-Also update front matter `updated_at` in managed files when materially changed.
-
----
+- Claim only one task at a time unless tasks are explicitly independent.
+- Preserve claims unless stale or explicitly overridden.
+- If another agent has modified a task's likely files, inspect before editing.
 
 ## Archive/finalization rules
 
-When `/fin-cont` is invoked:
+`/fin-cont` should:
 
-- archive current continuity files into the continuity archive location if configured by the skill;
-- summarize completed tasks and validation;
-- list remaining tasks or blockers;
-- suggest a commit message;
-- do not commit unless explicitly asked.
-
----
+- archive active files under `docs/continuity/archive/<continuity_session>/`;
+- mark active files as archived/idle or clear queue according to skill rules;
+- generate suggested commit message;
+- summarize done/partial/blocked work;
+- not commit unless user asks.
 
 ## Reporting format
 
-Final response after `/start-cont` should be concise:
+Use concise Spanish technical reports:
 
 ```text
-Estado: completado | bloqueado | checkpoint
-Tarea: <task>
 Hecho:
 - ...
-Archivos:
-- ...
+
 Validación:
-- <command>: OK/failed
-Pendiente/Bloqueo:
 - ...
+
 Siguiente:
 - ...
+
+Bloqueos:
+- ninguno / ...
 ```
-
-Do not claim completion if validation or checklist items remain.
-
----
 
 ## Project-specific task map
 
-Active queue:
+Primary core files likely involved:
 
-```text
-ACTIVE_QUEUE.md
-```
+- `src/settings.rs` — CLI/config parsing, possible `--modules-dir`.
+- `src/main.rs` — module dir resolution and runtime config wiring.
+- `src/app_state.rs` — `LauncherItem` action fields if adopted.
+- `src/launcher.rs` — `runas`, copy/launch action helpers if adopted.
+- `src/ui_win32.rs` — Enter/submit flow, close/keep-open behavior, clipboard feedback if needed.
+- `src/modules/types.rs` — public module item/action types.
+- `src/modules/ipc.rs` — IPC payloads/actions for external modules.
+- `src/modules/context.rs` — ctx actions and snapshots.
+- `src/modules/actions.rs` — action application and validation.
+- `src/modules/hooks.rs` — `onSubmit` trait hook.
+- `src/modules/mod.rs` — runtime dispatch, capability checks, telemetry.
+- `src/module_host_main.rs` — JS bridge parity.
+- `modules/*.rmod` — new/updated modules.
+- Root specs/docs — update when public contract changes.
 
-Wave 0 deliverables:
+AHK reference files:
 
-- `RELEASE_CHECKLIST.md`
-- `INSTALL.md`
-- `docs/release/BINARY_SIGNING.md`
-- `CHANGELOG.md`
-- `.github/workflows/release.yml`
-- updates to `README.md`, `POST_FREEZE_ROADMAP.md`, and `STATE.md`
-
-Current product decisions:
-
-- Manual smoke tests have already been validated by the user and should be documented as release smoke checks to repeat.
-- Release zip should include Windows x64 binaries, config/docs, and module examples where appropriate.
-- `shortcuts.rmod` with local hardcoded targets must not be active by default in packaged releases.
-- Prefer `modules/examples/shortcuts.example.rmod` or equivalent with generic/documented targets.
-- No MSI or auto-updater in Wave 0.
-- GitHub Actions release workflow should run on Windows and create artifacts/releases from `v*` tags.
-
----
+- `C:\tuicommandcenter\AHKFolder\Modules\CommandCenter.ahk`
+- `C:\tuicommandcenter\AHKFolder\Modules\AnytypeHandler.ahk`
+- `C:\tuicommandcenter\AHKFolder\Modules\gDriveRClone.ahk`
+- `C:\tuicommandcenter\AHKFolder\Modules\ColorPicker.ahk`
+- `C:\tuicommandcenter\AHKFolder\Modules\SnipTool.ahk`
+- `C:\tuicommandcenter\AHKFolder\anytype.js`
 
 ## Re-entry instructions
 
-To continue in a future session:
-
-```text
-/start-cont continúa desde STATE.md
-```
-
-or:
-
-```text
-/start-cont Ejecuta Wave 0 Packaging/release
-```
-
-The agent must then:
+On a new session:
 
 1. Read this file.
 2. Read `ACTIVE_QUEUE.md`.
 3. Read `STATE.md`.
-4. Pick the next executable task.
-5. Work until DoD or stop condition.
-
----
+4. Run `git status --short`.
+5. Continue from first pending unblocked task.
+6. Avoid touching files outside the claimed task.
 
 ## Commit policy
 
-Do not commit unless the user explicitly asks.
-
-If the user asks to commit:
-
-1. Run required validation first.
-2. Run `git status`.
-3. Stage only files changed by this agent/session with explicit paths.
-4. Never use `git add -A` or `git add .`.
-5. Include issue-closing syntax only when there is a related issue.
-6. Do not force push.
+- Do not commit without explicit user request.
+- If user asks to commit, stage only files changed in this session.
+- Never use `git add -A` or `git add .`.
+- Run required validation before commit unless user explicitly accepts skipping.
+- Include related issue/PR references only when applicable.

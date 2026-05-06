@@ -88,6 +88,25 @@ pub struct ModulesRuntimeConfig {
     pub max_ipc_payload_bytes: usize,
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct RmenuDataDirs {
+    pub data_dir: PathBuf,
+    pub modules_dir: PathBuf,
+    pub companions_dir: PathBuf,
+    pub config_dir: PathBuf,
+    pub state_dir: PathBuf,
+}
+
+pub struct ModuleDirCandidates {
+    pub cli: Option<PathBuf>,
+    pub env: Option<PathBuf>,
+    pub data_root: Option<PathBuf>,
+    pub appdata: Option<PathBuf>,
+    pub exe_dir: Option<PathBuf>,
+    pub cwd: PathBuf,
+}
+
 fn default_blacklist_path_commands() -> Vec<String> {
     vec![
         "powercfg", "where", "whoami", "icacls", "takeown", "tasklist", "taskkill", "wevtutil",
@@ -617,6 +636,9 @@ pub struct CmdOptions {
     pub elements_str: Option<String>,
     pub prompt: Option<String>,
     pub config_path: Option<String>,
+    pub modules_dir: Option<String>,
+    pub data_dir: Option<String>,
+    pub install_companion: Option<String>,
     pub silent: bool,
     pub debug_ranking: Option<String>,
     pub metrics: bool,
@@ -639,6 +661,97 @@ fn parse_csv_list(raw: &str) -> Vec<String> {
         .filter(|value| !value.is_empty())
         .map(|value| value.to_ascii_lowercase())
         .collect()
+}
+
+#[cfg(windows)]
+const DEFAULT_RMENU_DATA_DIR: &str = "C:\\rMenuData";
+#[cfg(not(windows))]
+const DEFAULT_RMENU_DATA_DIR: &str = "rmenu-data";
+
+pub fn resolve_data_dir(cli_data_dir: Option<&str>) -> PathBuf {
+    if let Some(path) = cli_data_dir
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        return path;
+    }
+
+    if let Some(path) = std::env::var("RMENU_DATA_DIR")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        return path;
+    }
+
+    PathBuf::from(DEFAULT_RMENU_DATA_DIR)
+}
+
+pub fn rmenu_data_dirs(cli_data_dir: Option<&str>) -> RmenuDataDirs {
+    let data_dir = resolve_data_dir(cli_data_dir);
+    RmenuDataDirs {
+        modules_dir: data_dir.join("modules"),
+        companions_dir: data_dir.join("companions"),
+        config_dir: data_dir.join("config"),
+        state_dir: data_dir.join("state"),
+        data_dir,
+    }
+}
+
+pub fn resolve_modules_dir_from_candidates(candidates: ModuleDirCandidates) -> PathBuf {
+    for candidate in [candidates.cli, candidates.env, candidates.data_root]
+        .into_iter()
+        .flatten()
+    {
+        return candidate;
+    }
+
+    for candidate in [candidates.appdata, candidates.exe_dir]
+        .into_iter()
+        .flatten()
+    {
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+
+    candidates.cwd
+}
+
+pub fn resolve_modules_dir(cli_modules_dir: Option<&str>, cli_data_dir: Option<&str>) -> PathBuf {
+    let cli = cli_modules_dir
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+
+    let env = std::env::var("RMENU_MODULES_DIR")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+
+    let data_root = Some(rmenu_data_dirs(cli_data_dir).modules_dir);
+
+    let appdata = dirs::data_dir().map(|path| path.join("rmenu").join("modules"));
+
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("modules")));
+
+    let cwd = std::env::current_dir()
+        .map(|path| path.join("modules"))
+        .unwrap_or_else(|_| PathBuf::from("modules"));
+
+    resolve_modules_dir_from_candidates(ModuleDirCandidates {
+        cli,
+        env,
+        data_root,
+        appdata,
+        exe_dir,
+        cwd,
+    })
 }
 
 fn parse_color_hex(hex: &str) -> io::Result<COLORREF> {
@@ -681,6 +794,24 @@ pub fn parse_args() -> CmdOptions {
             "-c" | "--config" => {
                 if i + 1 < args.len() {
                     options.config_path = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--modules-dir" => {
+                if i + 1 < args.len() {
+                    options.modules_dir = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--data-dir" => {
+                if i + 1 < args.len() {
+                    options.data_dir = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--install" => {
+                if i + 1 < args.len() {
+                    options.install_companion = Some(args[i + 1].clone());
                     i += 1;
                 }
             }
@@ -769,7 +900,12 @@ pub fn parse_args() -> CmdOptions {
 
 #[cfg(test)]
 mod tests {
-    use super::{DedupeSourcePriority, RmenuConfig};
+    use super::{
+        resolve_modules_dir_from_candidates, rmenu_data_dirs, DedupeSourcePriority,
+        ModuleDirCandidates, RmenuConfig,
+    };
+    use std::fs;
+    use std::path::PathBuf;
 
     #[test]
     fn invalid_module_config_values_fall_back_to_safe_defaults() {
@@ -811,6 +947,78 @@ max_ipc_payload_bytes = also-bad
             parsed.modules.max_ipc_payload_bytes,
             defaults.modules.max_ipc_payload_bytes
         );
+    }
+
+    #[test]
+    fn module_dir_resolution_uses_first_existing_candidate() {
+        let root = test_dir("modules-dir-resolution");
+        let cli = root.join("cli");
+        let env = root.join("env");
+        let data_root = root.join("data-root").join("modules");
+        let appdata = root.join("appdata");
+        let exe_dir = root.join("exe");
+        let cwd = root.join("cwd");
+        fs::create_dir_all(&appdata).expect("create appdata candidate");
+        fs::create_dir_all(&exe_dir).expect("create exe candidate");
+        fs::create_dir_all(&cwd).expect("create cwd fallback");
+
+        let resolved = resolve_modules_dir_from_candidates(ModuleDirCandidates {
+            cli: Some(cli),
+            env: Some(env),
+            data_root: None,
+            appdata: Some(appdata.clone()),
+            exe_dir: Some(exe_dir.clone()),
+            cwd,
+        });
+
+        assert_eq!(resolved, root.join("cli"));
+
+        let resolved_existing_fallback = resolve_modules_dir_from_candidates(ModuleDirCandidates {
+            cli: None,
+            env: None,
+            data_root: None,
+            appdata: Some(appdata.clone()),
+            exe_dir: Some(exe_dir),
+            cwd: root.join("cwd2"),
+        });
+        assert_eq!(resolved_existing_fallback, appdata.clone());
+
+        let resolved_data_root = resolve_modules_dir_from_candidates(ModuleDirCandidates {
+            cli: None,
+            env: None,
+            data_root: Some(data_root.clone()),
+            appdata: Some(appdata),
+            exe_dir: None,
+            cwd: root.join("cwd3"),
+        });
+        assert_eq!(resolved_data_root, data_root);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn data_dirs_derive_children_from_root() {
+        let dirs = rmenu_data_dirs(Some("C:\\rMenuData"));
+        assert_eq!(dirs.data_dir, PathBuf::from("C:\\rMenuData"));
+        assert_eq!(dirs.modules_dir, PathBuf::from("C:\\rMenuData\\modules"));
+        assert_eq!(
+            dirs.companions_dir,
+            PathBuf::from("C:\\rMenuData\\companions")
+        );
+        assert_eq!(dirs.config_dir, PathBuf::from("C:\\rMenuData\\config"));
+        assert_eq!(dirs.state_dir, PathBuf::from("C:\\rMenuData\\state"));
+    }
+
+    fn test_dir(name: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!(
+            "rmenu-settings-test-{}-{}",
+            name,
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create test dir");
+        dir
     }
 
     #[test]
@@ -859,6 +1067,11 @@ pub fn print_help() {
     );
     println!("  --metrics               Imprime métricas de startup/UI/search/dataset y sale.");
     println!("  --modules-debug         Imprime diagnóstico de módulos/hosts y sale.");
+    println!("  --modules-dir <PATH>    Sobrescribe el directorio de módulos para esta ejecución.");
+    println!(
+        "  --data-dir <PATH>       Directorio persistente rMenu (modules/companions/config/state)."
+    );
+    println!("  --install <NAME>        Instala companion nativo (rsnip desde GitHub latest).");
     println!(
         "  --reindex               Fuerza rebuild del índice (ignora cache en esta ejecución)."
     );

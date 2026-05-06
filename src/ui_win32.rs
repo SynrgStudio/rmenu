@@ -1,4 +1,8 @@
-use crate::app_state::{ensure_selection_visible, AppState};
+use crate::app_state::{
+    ensure_selection_visible, AppState, LauncherItem, RmodsInstallStatusView, RmodsPendingAction,
+    RmodsUiItem, RtasksInputPriority, RtasksInputStatus,
+};
+use crate::fuzzy::fuzzy_score;
 use crate::launcher::{
     abbreviate_target, centered_text_y, compact_target_hint, launch_target,
     truncate_with_ellipsis_end,
@@ -9,11 +13,21 @@ use crate::modules::{
     ModuleRuntime,
 };
 use crate::ranking::update_matching_items_with_dataset;
+use crate::rmods_registry::{
+    download_verify_and_install_rmod, fetch_default_registry, install_status_for,
+    read_registry_cache, scan_installed_rmods, uninstall_rmod, RmodsInstallStatus,
+    RmodsRegistryItem, DEFAULT_RMODS_REGISTRY_URL,
+};
+use crate::rsnip_companion::install_rsnip_latest;
+use crate::rtasks_companion::{
+    install_rtasks_latest, RtasksCompanion, RtasksIpcResponse, RtasksPriority, RtasksTaskStatus,
+};
 use crate::settings::{CmdOptions, QuickSelectMode, RmenuConfig};
 use crate::sources::persist_history_entry;
 use std::ffi::OsStr;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -29,15 +43,16 @@ use windows::{
         UI::{
             Input::KeyboardAndMouse::{
                 GetKeyState, VK_BACK, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_MENU, VK_RETURN, VK_SHIFT,
-                VK_TAB, VK_UP,
+                VK_SPACE, VK_TAB, VK_UP,
             },
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DispatchMessageW, GetClientRect, GetSystemMetrics,
-                LoadCursorW, PeekMessageW, PostQuitMessage, RegisterClassW, SetForegroundWindow,
-                ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MSG, PM_REMOVE,
-                SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, WINDOW_EX_STYLE, WM_CHAR, WM_CREATE, WM_DESTROY,
-                WM_KEYDOWN, WM_PAINT, WM_QUIT, WNDCLASSW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
-                WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
+                CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
+                GetSystemMetrics, GetWindowRect, IsWindow, KillTimer, LoadCursorW, MoveWindow,
+                PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassW, SetForegroundWindow,
+                SetTimer, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MSG,
+                PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, WINDOW_EX_STYLE, WM_CHAR, WM_CREATE,
+                WM_DESTROY, WM_KEYDOWN, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_TIMER, WNDCLASSW,
+                WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
             },
         },
     },
@@ -47,6 +62,13 @@ static APP_STATE: Mutex<Option<AppState>> = Mutex::new(None);
 static CONFIG: Mutex<Option<RmenuConfig>> = Mutex::new(None);
 static MODULE_RUNTIME: Mutex<Option<ModuleRuntime>> = Mutex::new(None);
 static UI_MEASURE_STATE: Mutex<UiMeasureState> = Mutex::new(UiMeasureState::disabled());
+static UI_EMBEDDED_MODE: AtomicBool = AtomicBool::new(false);
+static UI_EXIT_CODE: AtomicI32 = AtomicI32::new(0);
+static SUPPRESS_NEXT_RMODS_SPACE_CHAR: AtomicBool = AtomicBool::new(false);
+const INSTALL_CLOSE_TIMER_ID: usize = 42;
+const INSTALL_START_TIMER_ID: usize = 43;
+const WM_INSTALL_PROGRESS: u32 = 0x8000 + 1;
+const WM_INSTALL_DONE: u32 = 0x8000 + 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct UiLatencyMetrics {
@@ -117,6 +139,17 @@ fn mark_first_paint_and_input_ready_metrics() {
 
 fn is_measure_mode_enabled() -> bool {
     UI_MEASURE_STATE.lock().unwrap().enabled
+}
+
+fn request_ui_exit(hwnd: HWND, exit_code: i32) {
+    UI_EXIT_CODE.store(exit_code, Ordering::SeqCst);
+    unsafe {
+        DestroyWindow(hwnd);
+    }
+}
+
+fn current_ui_exit_code() -> i32 {
+    UI_EXIT_CODE.load(Ordering::SeqCst)
 }
 
 fn to_wstring(s: &str) -> Vec<u16> {
@@ -190,7 +223,11 @@ fn determine_window_geometry(
     let input_bar_height = config.dimensions.height;
     let item_h = config.dimensions.item_height;
     let padding = config.dimensions.padding;
-    let list_height = (num_items_to_show as i32 * item_h) + (2 * padding);
+    let list_height = if num_items_to_show == 0 {
+        0
+    } else {
+        (num_items_to_show as i32 * item_h) + (2 * padding)
+    };
     let total_window_height = input_bar_height + list_height + config.dimensions.border_width * 2;
 
     match final_layout_str {
@@ -326,7 +363,458 @@ fn determine_window_geometry(
     }
 }
 
+fn visible_item_count(app_state: &AppState, config: &RmenuConfig) -> usize {
+    if app_state.current_input.trim().is_empty() {
+        return 0;
+    }
+
+    app_state
+        .matching_items
+        .len()
+        .min(config.behavior.max_items.max(0) as usize)
+}
+
+fn resize_window_to_state(hwnd: HWND, app_state: &AppState) {
+    let config_guard = CONFIG.lock().unwrap();
+    let Some(config) = config_guard.as_ref() else {
+        return;
+    };
+
+    let item_count = visible_item_count(app_state, config);
+    let input_bar_height = config.dimensions.height;
+    let list_height = if item_count == 0 {
+        0
+    } else {
+        (item_count as i32 * config.dimensions.item_height) + (2 * config.dimensions.padding)
+    };
+    let height = input_bar_height + list_height + config.dimensions.border_width * 2;
+
+    let mut rect = windows::Win32::Foundation::RECT::default();
+    if unsafe { GetWindowRect(hwnd, &mut rect) }.as_bool() {
+        let width = rect.right - rect.left;
+        let _ = unsafe { MoveWindow(hwnd, rect.left, rect.top, width, height, true) };
+    }
+}
+
+fn refresh_window(hwnd: HWND, app_state: &AppState) {
+    resize_window_to_state(hwnd, app_state);
+    unsafe {
+        InvalidateRect(hwnd, None, true);
+    }
+}
+
+fn is_rtasks_input(input: &str) -> bool {
+    input == "t" || input.starts_with("t ")
+}
+
+fn is_rmods_input(input: &str) -> bool {
+    let trimmed = input.trim_start();
+    trimmed.eq_ignore_ascii_case("/rmods")
+        || trimmed
+            .get(..6)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("/rmods"))
+            && trimmed
+                .as_bytes()
+                .get(6)
+                .is_some_and(|value| value.is_ascii_whitespace())
+}
+
+fn rmods_filter_query(input: &str) -> &str {
+    let trimmed = input.trim_start();
+    if trimmed
+        .get(..6)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("/rmods"))
+    {
+        trimmed.get(6..).unwrap_or("").trim()
+    } else {
+        ""
+    }
+}
+
+fn rtasks_task_text(input: &str) -> &str {
+    input.strip_prefix("t ").unwrap_or("").trim()
+}
+
+fn toggle_rtasks_status(app_state: &mut AppState, status: RtasksInputStatus) {
+    app_state.rtasks_status = if app_state.rtasks_status == Some(status) {
+        None
+    } else {
+        Some(status)
+    };
+}
+
+fn toggle_rtasks_priority(app_state: &mut AppState, priority: RtasksInputPriority) {
+    app_state.rtasks_priority = if app_state.rtasks_priority == Some(priority) {
+        None
+    } else {
+        Some(priority)
+    };
+}
+
+fn rtasks_status_label(status: Option<RtasksInputStatus>) -> &'static str {
+    match status.unwrap_or(RtasksInputStatus::Todo) {
+        RtasksInputStatus::Todo => "TODO",
+        RtasksInputStatus::Doing => "DOING",
+        RtasksInputStatus::Done => "DONE",
+    }
+}
+
+fn rtasks_priority_label(priority: Option<RtasksInputPriority>) -> &'static str {
+    match priority.unwrap_or(RtasksInputPriority::Medium) {
+        RtasksInputPriority::High => "prio:ALTA",
+        RtasksInputPriority::Medium => "prio:MEDIA",
+        RtasksInputPriority::Low => "prio:BAJA",
+    }
+}
+
+fn rtasks_status_for_ipc(status: Option<RtasksInputStatus>) -> Option<RtasksTaskStatus> {
+    status.map(|status| match status {
+        RtasksInputStatus::Todo => RtasksTaskStatus::Todo,
+        RtasksInputStatus::Doing => RtasksTaskStatus::Doing,
+        RtasksInputStatus::Done => RtasksTaskStatus::Done,
+    })
+}
+
+fn rtasks_priority_for_ipc(priority: Option<RtasksInputPriority>) -> Option<RtasksPriority> {
+    priority.map(|priority| match priority {
+        RtasksInputPriority::High => RtasksPriority::High,
+        RtasksInputPriority::Medium => RtasksPriority::Medium,
+        RtasksInputPriority::Low => RtasksPriority::Low,
+    })
+}
+
+fn update_rmods_items(app_state: &mut AppState, force_refresh: bool) {
+    if app_state.rmods.loaded && !force_refresh {
+        render_rmods_matching_items(app_state);
+        return;
+    }
+
+    let registry = fetch_default_registry(None).or_else(|_| read_registry_cache(None));
+    let local_modules = scan_installed_rmods(None).unwrap_or_default();
+
+    match registry {
+        Ok(registry) => {
+            app_state.rmods.items = registry
+                .modules
+                .into_iter()
+                .map(|item| {
+                    let local = local_modules.get(&item.id.to_ascii_lowercase());
+                    let status = match install_status_for(&item, local) {
+                        RmodsInstallStatus::NotInstalled => RmodsInstallStatusView::NotInstalled,
+                        RmodsInstallStatus::Installed => RmodsInstallStatusView::Installed,
+                        RmodsInstallStatus::UpdateAvailable => {
+                            RmodsInstallStatusView::UpdateAvailable
+                        }
+                        RmodsInstallStatus::LocalNewer => RmodsInstallStatusView::LocalNewer,
+                        RmodsInstallStatus::ChecksumMismatch => {
+                            RmodsInstallStatusView::ChecksumMismatch
+                        }
+                    };
+                    RmodsUiItem {
+                        id: item.id,
+                        name: item.name,
+                        version: item.version,
+                        description: item.description,
+                        kind: item.kind,
+                        download_url: item.download_url,
+                        base_url: item.base_url,
+                        sha256: item.sha256,
+                        size: item.size,
+                        files: item.files,
+                        status,
+                        pending_action: RmodsPendingAction::None,
+                    }
+                })
+                .collect();
+            app_state.rmods.error = None;
+        }
+        Err(error) => {
+            app_state.rmods.items.clear();
+            app_state.rmods.error = Some(error.message());
+        }
+    }
+
+    app_state.rmods.loaded = true;
+    render_rmods_matching_items(app_state);
+}
+
+fn render_rmods_matching_items(app_state: &mut AppState) {
+    if let Some(error) = &app_state.rmods.error {
+        let mut error_item = LauncherItem::new(
+            format!("rMods registry error: {error}"),
+            "rmods:error".to_string(),
+            crate::app_state::LauncherSource::Direct,
+        );
+        error_item.trailing_hint = Some("Press R to retry".to_string());
+        error_item.trailing_badge = Some("error".to_string());
+        app_state.matching_items = vec![error_item];
+        app_state.selected_index = 0;
+        app_state.scroll_offset = 0;
+        return;
+    }
+
+    let filter = rmods_filter_query(&app_state.current_input);
+    let mut rendered = app_state
+        .rmods
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            let score = if filter.is_empty() {
+                1
+            } else {
+                fuzzy_score(
+                    filter,
+                    &format!("{} {} {}", item.name, item.id, item.description),
+                    false,
+                )
+            };
+            if score <= 0 {
+                return None;
+            }
+
+            let checkbox = rmods_checkbox(item.status, item.pending_action);
+            let status = rmods_status_label(item.status);
+            let label = format!("{checkbox} {} {}", item.name, item.version);
+            let mut launcher_item = LauncherItem::new(
+                label,
+                format!("rmods:{}", item.id),
+                crate::app_state::LauncherSource::Direct,
+            );
+            launcher_item.trailing_badge = Some(status.to_string());
+            launcher_item.trailing_hint = if item.description.trim().is_empty() {
+                Some("Space mark | F5/Ctrl+R refresh | Ctrl+U updates".to_string())
+            } else {
+                Some(item.description.clone())
+            };
+            Some((index, score, launcher_item))
+        })
+        .collect::<Vec<_>>();
+    if !filter.is_empty() {
+        rendered.sort_by(
+            |(left_index, left_score, _), (right_index, right_score, _)| {
+                right_score
+                    .cmp(left_score)
+                    .then_with(|| left_index.cmp(right_index))
+            },
+        );
+    }
+    app_state.matching_items = rendered.into_iter().map(|(_, _, item)| item).collect();
+    if app_state.matching_items.is_empty() {
+        app_state.matching_items = vec![LauncherItem::new(
+            if filter.is_empty() {
+                "No rMods found in registry".to_string()
+            } else {
+                format!("No rMods match '{filter}'")
+            },
+            "rmods:empty".to_string(),
+            crate::app_state::LauncherSource::Direct,
+        )];
+    }
+    if app_state.selected_index >= app_state.matching_items.len() {
+        app_state.selected_index = app_state.matching_items.len().saturating_sub(1);
+    }
+    ensure_selection_visible(app_state, 10);
+}
+
+fn rmods_status_label(status: RmodsInstallStatusView) -> &'static str {
+    match status {
+        RmodsInstallStatusView::NotInstalled => "not installed",
+        RmodsInstallStatusView::Installed => "installed",
+        RmodsInstallStatusView::UpdateAvailable => "update available",
+        RmodsInstallStatusView::LocalNewer => "local newer",
+        RmodsInstallStatusView::ChecksumMismatch => "checksum mismatch",
+    }
+}
+
+fn rmods_checkbox(status: RmodsInstallStatusView, action: RmodsPendingAction) -> &'static str {
+    if action != RmodsPendingAction::None {
+        "[/]"
+    } else if rmods_status_is_installed(status) {
+        "[x]"
+    } else {
+        "[ ]"
+    }
+}
+
+fn rmods_status_is_installed(status: RmodsInstallStatusView) -> bool {
+    matches!(
+        status,
+        RmodsInstallStatusView::Installed
+            | RmodsInstallStatusView::UpdateAvailable
+            | RmodsInstallStatusView::LocalNewer
+            | RmodsInstallStatusView::ChecksumMismatch
+    )
+}
+
+fn default_rmods_action(status: RmodsInstallStatusView) -> RmodsPendingAction {
+    match status {
+        RmodsInstallStatusView::NotInstalled => RmodsPendingAction::Install,
+        RmodsInstallStatusView::UpdateAvailable => RmodsPendingAction::Update,
+        RmodsInstallStatusView::Installed
+        | RmodsInstallStatusView::LocalNewer
+        | RmodsInstallStatusView::ChecksumMismatch => RmodsPendingAction::Uninstall,
+    }
+}
+
+fn selected_rmods_item_id(app_state: &AppState) -> Option<String> {
+    app_state
+        .matching_items
+        .get(app_state.selected_index)
+        .and_then(|item| item.target.strip_prefix("rmods:"))
+        .filter(|id| !id.is_empty() && *id != "empty" && *id != "error")
+        .map(ToString::to_string)
+}
+
+fn restore_rmods_selection(app_state: &mut AppState, selected_id: &str) {
+    if let Some(index) = app_state
+        .matching_items
+        .iter()
+        .position(|item| item.target == format!("rmods:{selected_id}"))
+    {
+        app_state.selected_index = index;
+        ensure_selection_visible(app_state, 10);
+    }
+}
+
+fn toggle_selected_rmod(app_state: &mut AppState) {
+    let Some(selected_id) = selected_rmods_item_id(app_state) else {
+        return;
+    };
+    if let Some(item) = app_state
+        .rmods
+        .items
+        .iter_mut()
+        .find(|item| item.id == selected_id)
+    {
+        item.pending_action = if item.pending_action == RmodsPendingAction::None {
+            default_rmods_action(item.status)
+        } else {
+            RmodsPendingAction::None
+        };
+        render_rmods_matching_items(app_state);
+        restore_rmods_selection(app_state, &selected_id);
+    }
+}
+
+fn select_rmods_updates(app_state: &mut AppState) {
+    for item in &mut app_state.rmods.items {
+        item.pending_action = if item.status == RmodsInstallStatusView::UpdateAvailable {
+            RmodsPendingAction::Update
+        } else {
+            RmodsPendingAction::None
+        };
+    }
+    render_rmods_matching_items(app_state);
+}
+
+fn rmods_registry_item_from_ui(item: &RmodsUiItem) -> RmodsRegistryItem {
+    RmodsRegistryItem {
+        id: item.id.clone(),
+        name: item.name.clone(),
+        version: item.version.clone(),
+        description: item.description.clone(),
+        kind: item.kind.clone(),
+        download_url: item.download_url.clone(),
+        base_url: item.base_url.clone(),
+        sha256: item.sha256.clone(),
+        size: item.size,
+        files: item.files.clone(),
+        tags: Vec::new(),
+        requires_rmenu: None,
+    }
+}
+
+#[derive(Debug, Default)]
+struct RmodsApplySummary {
+    installed: usize,
+    updated: usize,
+    uninstalled: usize,
+}
+
+fn apply_rmods_changes(app_state: &mut AppState) -> Result<RmodsApplySummary, String> {
+    let pending = app_state
+        .rmods
+        .items
+        .iter()
+        .filter(|item| item.pending_action != RmodsPendingAction::None)
+        .cloned()
+        .collect::<Vec<_>>();
+    if pending.is_empty() {
+        return Ok(RmodsApplySummary::default());
+    }
+
+    let mut summary = RmodsApplySummary::default();
+    let mut errors = Vec::new();
+    for item in pending {
+        match item.pending_action {
+            RmodsPendingAction::None => {}
+            RmodsPendingAction::Install => {
+                let registry_item = rmods_registry_item_from_ui(&item);
+                match download_verify_and_install_rmod(
+                    &registry_item,
+                    None,
+                    DEFAULT_RMODS_REGISTRY_URL,
+                ) {
+                    Ok(_) => summary.installed += 1,
+                    Err(error) => errors.push(format!("{}: {}", item.id, error.message())),
+                }
+            }
+            RmodsPendingAction::Update => {
+                let registry_item = rmods_registry_item_from_ui(&item);
+                match download_verify_and_install_rmod(
+                    &registry_item,
+                    None,
+                    DEFAULT_RMODS_REGISTRY_URL,
+                ) {
+                    Ok(_) => summary.updated += 1,
+                    Err(error) => errors.push(format!("{}: {}", item.id, error.message())),
+                }
+            }
+            RmodsPendingAction::Uninstall => match uninstall_rmod(&item.id, None) {
+                Ok(_) => summary.uninstalled += 1,
+                Err(error) => errors.push(format!("{}: {}", item.id, error.message())),
+            },
+        }
+    }
+    update_rmods_items(app_state, true);
+
+    if errors.is_empty() {
+        Ok(summary)
+    } else {
+        Err(format!(
+            "installed {}, updated {}, removed {}; failed {} ({})",
+            summary.installed,
+            summary.updated,
+            summary.uninstalled,
+            errors.len(),
+            errors.join("; ")
+        ))
+    }
+}
+
 fn update_matching_items_from_config(app_state: &mut AppState) {
+    if !is_rtasks_input(&app_state.current_input) {
+        app_state.rtasks_status = None;
+        app_state.rtasks_priority = None;
+    }
+
+    if is_rmods_input(&app_state.current_input) {
+        update_rmods_items(app_state, false);
+        return;
+    } else {
+        app_state.rmods.loaded = false;
+        app_state.rmods.items.clear();
+        app_state.rmods.error = None;
+    }
+
+    if is_rtasks_input(&app_state.current_input) {
+        app_state.matching_items.clear();
+        app_state.selected_index = 0;
+        app_state.scroll_offset = 0;
+        return;
+    }
+
     let mut provider_items = Vec::new();
 
     {
@@ -693,7 +1181,44 @@ unsafe extern "system" fn window_proc(
                         .and_then(|runtime| runtime.active_input_accessory())
                 };
 
-                if let Some(accessory) = accessory {
+                if is_rtasks_input(&app_state.current_input) {
+                    let status_text = rtasks_status_label(app_state.rtasks_status);
+                    let priority_text = rtasks_priority_label(app_state.rtasks_priority);
+                    let gap = char_w * 2;
+                    let priority_w = priority_text.chars().count() as i32 * char_w;
+                    let status_w = status_text.chars().count() as i32 * char_w;
+                    let priority_x = rect.right - current_padding - priority_w;
+                    let status_x = priority_x - gap - status_w;
+                    SetTextColor(
+                        hdc,
+                        if app_state.rtasks_status.is_some() {
+                            COLORREF(0x0079C398)
+                        } else {
+                            config.colors.foreground
+                        },
+                    );
+                    draw_text_w(
+                        hdc,
+                        status_x.max(x_offset + current_padding),
+                        input_text_y,
+                        status_text,
+                    );
+                    SetTextColor(
+                        hdc,
+                        if app_state.rtasks_priority.is_some() {
+                            COLORREF(0x0079C398)
+                        } else {
+                            config.colors.foreground
+                        },
+                    );
+                    draw_text_w(
+                        hdc,
+                        priority_x.max(x_offset + current_padding),
+                        input_text_y,
+                        priority_text,
+                    );
+                    SetTextColor(hdc, config.colors.foreground);
+                } else if let Some(accessory) = accessory {
                     let accessory_text = input_accessory_text(&accessory);
                     let max_chars =
                         ((rect.right - (x_offset + current_padding * 2)) / char_w).max(0) as usize;
@@ -772,12 +1297,12 @@ unsafe extern "system" fn window_proc(
 
             if is_measure_mode_enabled() {
                 mark_first_paint_and_input_ready_metrics();
-                PostQuitMessage(0);
+                request_ui_exit(hwnd, 0);
             }
 
             LRESULT(0)
         }
-        WM_KEYDOWN => {
+        WM_KEYDOWN | WM_SYSKEYDOWN => {
             let key_code = w_param.0 as i32;
             let mut app_state_guard = APP_STATE.lock().unwrap();
             if let Some(app_state) = app_state_guard.as_mut() {
@@ -794,8 +1319,58 @@ unsafe extern "system" fn window_proc(
                     InvalidateRect(hwnd, None, true);
                 }
 
+                let alt_down = unsafe { (GetKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0 };
+                let ctrl_down = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
+                if is_rtasks_input(&app_state.current_input) && alt_down {
+                    match key_code {
+                        code if code == '1' as i32 => {
+                            toggle_rtasks_status(app_state, RtasksInputStatus::Todo)
+                        }
+                        code if code == '2' as i32 => {
+                            toggle_rtasks_status(app_state, RtasksInputStatus::Doing)
+                        }
+                        code if code == '3' as i32 => {
+                            toggle_rtasks_status(app_state, RtasksInputStatus::Done)
+                        }
+                        code if code == 'Q' as i32 => {
+                            toggle_rtasks_priority(app_state, RtasksInputPriority::High)
+                        }
+                        code if code == 'W' as i32 => {
+                            toggle_rtasks_priority(app_state, RtasksInputPriority::Medium)
+                        }
+                        code if code == 'E' as i32 => {
+                            toggle_rtasks_priority(app_state, RtasksInputPriority::Low)
+                        }
+                        _ => {}
+                    }
+                    refresh_window(hwnd, app_state);
+                    return LRESULT(0);
+                }
+
+                if is_rmods_input(&app_state.current_input) {
+                    match key_code {
+                        code if code == VK_SPACE.0 as i32 => {
+                            toggle_selected_rmod(app_state);
+                            SUPPRESS_NEXT_RMODS_SPACE_CHAR.store(true, Ordering::Relaxed);
+                            refresh_window(hwnd, app_state);
+                            return LRESULT(0);
+                        }
+                        code if code == 0x74 || (ctrl_down && code == 'R' as i32) => {
+                            update_rmods_items(app_state, true);
+                            refresh_window(hwnd, app_state);
+                            return LRESULT(0);
+                        }
+                        code if ctrl_down && code == 'U' as i32 => {
+                            select_rmods_updates(app_state);
+                            refresh_window(hwnd, app_state);
+                            return LRESULT(0);
+                        }
+                        _ => {}
+                    }
+                }
+
                 if key_code == VK_ESCAPE.0 as i32 {
-                    PostQuitMessage(1);
+                    request_ui_exit(hwnd, 1);
                 } else if let Some(digit_key) = resolve_digit_from_key(key_code) {
                     let (max_visible, quick_select_mode) = {
                         let config_guard = CONFIG.lock().unwrap();
@@ -835,34 +1410,79 @@ unsafe extern "system" fn window_proc(
                             } else {
                                 println!("{}", selected.label);
                             }
-                            PostQuitMessage(0);
+                            request_ui_exit(hwnd, 0);
                         } else {
                             InvalidateRect(hwnd, None, true);
                         }
                     }
                 } else if key_code == VK_RETURN.0 as i32 {
-                    if !app_state.matching_items.is_empty()
-                        && app_state.selected_index < app_state.matching_items.len()
-                    {
-                        let selected = app_state.matching_items[app_state.selected_index].clone();
-                        if app_state.launcher_mode {
-                            if let Err(e) = launch_target(&selected.target) {
-                                if !app_state.silent_mode {
-                                    eprintln!(
-                                        "Error launching target '{}': {}",
-                                        selected.target, e
+                    if is_rmods_input(&app_state.current_input) {
+                        let result = apply_rmods_changes(app_state);
+                        let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+                        if let Some(runtime) = runtime_guard.as_mut() {
+                            match result {
+                                Ok(summary)
+                                    if summary.installed == 0
+                                        && summary.updated == 0
+                                        && summary.uninstalled == 0 =>
+                                {
+                                    runtime.set_runtime_feedback(
+                                        "No rMods changes",
+                                        InputAccessoryKind::Hint,
                                     );
                                 }
-                            } else {
-                                persist_history_entry(
-                                    &selected.target,
-                                    app_state.silent_mode,
-                                    app_state.history_max_items,
-                                );
+                                Ok(summary) => {
+                                    runtime.reload_external_descriptors(app_state.silent_mode);
+                                    runtime.set_runtime_feedback(
+                                        format!(
+                                            "rMods: installed {}, updated {}, removed {}",
+                                            summary.installed, summary.updated, summary.uninstalled
+                                        ),
+                                        InputAccessoryKind::Success,
+                                    );
+                                }
+                                Err(error) => {
+                                    runtime.reload_external_descriptors(app_state.silent_mode);
+                                    runtime.set_runtime_feedback(
+                                        format!("rMods changes failed: {error}"),
+                                        InputAccessoryKind::Error,
+                                    );
+                                }
                             }
-                        } else {
-                            println!("{}", selected.label);
                         }
+                        refresh_window(hwnd, app_state);
+                        return LRESULT(0);
+                    } else if is_rtasks_input(&app_state.current_input) {
+                        let task_input = rtasks_task_text(&app_state.current_input).to_string();
+                        if !task_input.is_empty() {
+                            let result = RtasksCompanion::discover().and_then(|companion| {
+                                companion.ensure_and_add_task(
+                                    task_input,
+                                    rtasks_status_for_ipc(app_state.rtasks_status),
+                                    rtasks_priority_for_ipc(app_state.rtasks_priority),
+                                )
+                            });
+                            let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+                            if let Some(runtime) = runtime_guard.as_mut() {
+                                match result {
+                                    Ok(RtasksIpcResponse::Ok { .. }) => runtime
+                                        .set_runtime_feedback(
+                                            "RTasks task added",
+                                            InputAccessoryKind::Success,
+                                        ),
+                                    Ok(RtasksIpcResponse::Error { message }) => runtime
+                                        .set_runtime_feedback(
+                                            format!("RTasks add failed: {message}"),
+                                            InputAccessoryKind::Error,
+                                        ),
+                                    Err(err) => runtime.set_runtime_feedback(
+                                        format!("RTasks add failed: {err:?}"),
+                                        InputAccessoryKind::Error,
+                                    ),
+                                }
+                            }
+                        }
+                        request_ui_exit(hwnd, 0);
                     } else if !app_state.current_input.is_empty() {
                         let current_input = app_state.current_input.clone();
                         if let Some(raw_command) = current_input.strip_prefix('/') {
@@ -870,15 +1490,74 @@ unsafe extern "system" fn window_proc(
                             if let Some((command, rest)) = parts.split_first() {
                                 let args =
                                     rest.iter().map(|v| (*v).to_string()).collect::<Vec<_>>();
+                                if command.eq_ignore_ascii_case("install")
+                                    && args.first().is_some_and(|value| {
+                                        value.eq_ignore_ascii_case("rsnip")
+                                            || value.eq_ignore_ascii_case("rtasks")
+                                    })
+                                {
+                                    let companion_name = args
+                                        .first()
+                                        .map(|value| value.to_ascii_lowercase())
+                                        .unwrap_or_default();
+                                    {
+                                        let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+                                        if let Some(runtime) = runtime_guard.as_mut() {
+                                            runtime.set_runtime_feedback(
+                                                format!(
+                                                    "Fetching {} from GitHub latest release",
+                                                    if companion_name == "rtasks" {
+                                                        "RTasks"
+                                                    } else {
+                                                        "rSnip"
+                                                    }
+                                                ),
+                                                InputAccessoryKind::Info,
+                                            );
+                                        }
+                                    }
+                                    refresh_window(hwnd, app_state);
+                                    unsafe {
+                                        SetTimer(hwnd, INSTALL_START_TIMER_ID, 350, None);
+                                    }
+                                    return LRESULT(0);
+                                }
+
                                 let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
                                 if let Some(runtime) = runtime_guard.as_mut() {
-                                    runtime.dispatch_command(
+                                    if runtime.dispatch_command(
                                         app_state,
                                         command,
                                         &args,
                                         app_state.silent_mode,
+                                    ) {
+                                        refresh_window(hwnd, app_state);
+                                        return LRESULT(0);
+                                    }
+                                }
+                            }
+                        } else if !app_state.matching_items.is_empty()
+                            && app_state.selected_index < app_state.matching_items.len()
+                        {
+                            let selected =
+                                app_state.matching_items[app_state.selected_index].clone();
+                            if app_state.launcher_mode {
+                                if let Err(e) = launch_target(&selected.target) {
+                                    if !app_state.silent_mode {
+                                        eprintln!(
+                                            "Error launching target '{}': {}",
+                                            selected.target, e
+                                        );
+                                    }
+                                } else {
+                                    persist_history_entry(
+                                        &selected.target,
+                                        app_state.silent_mode,
+                                        app_state.history_max_items,
                                     );
                                 }
+                            } else {
+                                println!("{}", selected.label);
                             }
                         } else if app_state.launcher_mode {
                             if let Err(e) = launch_target(&app_state.current_input) {
@@ -899,7 +1578,7 @@ unsafe extern "system" fn window_proc(
                             println!("{}", app_state.current_input);
                         }
                     }
-                    PostQuitMessage(0);
+                    request_ui_exit(hwnd, 0);
                 } else if key_code == VK_DOWN.0 as i32 {
                     if !app_state.matching_items.is_empty() {
                         app_state.selected_index =
@@ -932,7 +1611,7 @@ unsafe extern "system" fn window_proc(
                         app_state.current_input.pop();
                         app_state.selected_index = 0;
                         update_matching_items_from_config(app_state);
-                        InvalidateRect(hwnd, None, true);
+                        refresh_window(hwnd, app_state);
                     }
                 } else if key_code == VK_TAB.0 as i32 {
                     if !app_state.matching_items.is_empty()
@@ -943,7 +1622,7 @@ unsafe extern "system" fn window_proc(
                             .label
                             .clone();
                         update_matching_items_from_config(app_state);
-                        InvalidateRect(hwnd, None, true);
+                        refresh_window(hwnd, app_state);
                     }
                 }
             }
@@ -953,20 +1632,128 @@ unsafe extern "system" fn window_proc(
         WM_CHAR => {
             let char_code = w_param.0 as u16;
             if char_code >= ' ' as u16 {
+                if char_code == ' ' as u16
+                    && SUPPRESS_NEXT_RMODS_SPACE_CHAR.swap(false, Ordering::Relaxed)
+                {
+                    return LRESULT(0);
+                }
                 if let Ok(mut app_state_guard) = APP_STATE.lock() {
                     if let Some(app_state) = app_state_guard.as_mut() {
+                        let selected_rmod_id = if is_rmods_input(&app_state.current_input) {
+                            selected_rmods_item_id(app_state)
+                        } else {
+                            None
+                        };
                         if let Some(char_val) = std::char::from_u32(char_code as u32) {
+                            if app_state.current_input.eq_ignore_ascii_case("/rmods")
+                                && !char_val.is_whitespace()
+                            {
+                                app_state.current_input.push(' ');
+                            }
                             app_state.current_input.push(char_val);
                         }
                         app_state.selected_index = 0;
                         update_matching_items_from_config(app_state);
-                        InvalidateRect(hwnd, None, true);
+                        if let Some(selected_id) = selected_rmod_id {
+                            restore_rmods_selection(app_state, &selected_id);
+                        }
+                        refresh_window(hwnd, app_state);
                     }
                 }
             }
             LRESULT(0)
         }
+        WM_INSTALL_PROGRESS => {
+            if let Ok(app_state_guard) = APP_STATE.lock() {
+                if let Some(app_state) = app_state_guard.as_ref() {
+                    refresh_window(hwnd, app_state);
+                }
+            }
+            LRESULT(0)
+        }
+        WM_INSTALL_DONE => {
+            if let Ok(app_state_guard) = APP_STATE.lock() {
+                if let Some(app_state) = app_state_guard.as_ref() {
+                    refresh_window(hwnd, app_state);
+                }
+            }
+            unsafe {
+                SetTimer(hwnd, INSTALL_CLOSE_TIMER_ID, 1_000, None);
+            }
+            LRESULT(0)
+        }
+        WM_TIMER => {
+            if w_param.0 == INSTALL_START_TIMER_ID {
+                unsafe {
+                    KillTimer(hwnd, INSTALL_START_TIMER_ID);
+                }
+                let companion_name = if let Ok(app_state_guard) = APP_STATE.lock() {
+                    if let Some(app_state) = app_state_guard.as_ref() {
+                        let companion_name = app_state
+                            .current_input
+                            .split_whitespace()
+                            .nth(1)
+                            .map(|value| value.to_ascii_lowercase())
+                            .unwrap_or_else(|| "rsnip".to_string());
+                        {
+                            let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+                            if let Some(runtime) = runtime_guard.as_mut() {
+                                let installing_text = if companion_name == "rtasks" {
+                                    "Installing RTasks"
+                                } else {
+                                    "Installing rSnip"
+                                };
+                                runtime.set_runtime_feedback(
+                                    installing_text,
+                                    InputAccessoryKind::Info,
+                                );
+                            }
+                        }
+                        refresh_window(hwnd, app_state);
+                        companion_name
+                    } else {
+                        "rsnip".to_string()
+                    }
+                } else {
+                    "rsnip".to_string()
+                };
+
+                let hwnd_raw = hwnd.0;
+                std::thread::spawn(move || {
+                    let hwnd = HWND(hwnd_raw);
+                    let install_result = if companion_name == "rtasks" {
+                        install_rtasks_latest()
+                            .map(|_| "RTasks installed as rMenu companion")
+                            .map_err(|err| format!("RTasks install failed: {err:?}"))
+                    } else {
+                        install_rsnip_latest()
+                            .map(|_| "rSnip installed as rMenu companion")
+                            .map_err(|err| format!("rSnip install failed: {err:?}"))
+                    };
+                    {
+                        let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+                        if let Some(runtime) = runtime_guard.as_mut() {
+                            match install_result {
+                                Ok(message) => runtime
+                                    .set_runtime_feedback(message, InputAccessoryKind::Success),
+                                Err(message) => {
+                                    runtime.set_runtime_feedback(message, InputAccessoryKind::Error)
+                                }
+                            }
+                        }
+                    }
+                    let _ = unsafe { PostMessageW(hwnd, WM_INSTALL_DONE, WPARAM(0), LPARAM(0)) };
+                });
+            } else if w_param.0 == INSTALL_CLOSE_TIMER_ID {
+                request_ui_exit(hwnd, 0);
+            }
+            LRESULT(0)
+        }
         WM_DESTROY => {
+            if UI_EMBEDDED_MODE.load(Ordering::SeqCst) {
+                return LRESULT(0);
+            }
+
             let mut app_state_guard = APP_STATE.lock().unwrap();
             let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
             if let (Some(app_state), Some(runtime)) =
@@ -975,7 +1762,7 @@ unsafe extern "system" fn window_proc(
                 runtime.run_on_unload(app_state);
             }
             *runtime_guard = None;
-            PostQuitMessage(0);
+            PostQuitMessage(current_ui_exit_code());
             LRESULT(0)
         }
         _ => DefWindowProcW(hwnd, msg, w_param, l_param),
@@ -988,7 +1775,10 @@ fn run_ui_internal(
     initial_app_state: AppState,
     mut module_runtime: ModuleRuntime,
     measure_mode: bool,
+    embedded_mode: bool,
 ) -> windows::core::Result<i32> {
+    UI_EMBEDDED_MODE.store(embedded_mode, Ordering::SeqCst);
+    UI_EXIT_CODE.store(0, Ordering::SeqCst);
     {
         let mut config_guard = CONFIG.lock().unwrap();
         *config_guard = Some(config.clone());
@@ -997,6 +1787,7 @@ fn run_ui_internal(
         let mut app_state_guard = APP_STATE.lock().unwrap();
         *app_state_guard = Some(initial_app_state);
     }
+    module_runtime.clear_runtime_feedback();
     {
         let mut app_state_guard = APP_STATE.lock().unwrap();
         if let Some(app_state) = app_state_guard.as_mut() {
@@ -1019,7 +1810,7 @@ fn run_ui_internal(
 
     unsafe {
         let class_name_w = to_wstring("rmenu_class_layout");
-        let window_title_w = to_wstring("rmenu");
+        let window_title_w = to_wstring("rMenu");
 
         let wc = WNDCLASSW {
             style: CS_HREDRAW | CS_VREDRAW,
@@ -1033,11 +1824,9 @@ fn run_ui_internal(
 
         let num_items_for_geom = {
             let app_state_guard = APP_STATE.lock().unwrap();
-            app_state_guard.as_ref().map_or(0, |s| {
-                s.matching_items
-                    .len()
-                    .min(config.behavior.max_items as usize)
-            })
+            app_state_guard
+                .as_ref()
+                .map_or(0, |state| visible_item_count(state, config))
         };
 
         let geometry = determine_window_geometry(cmd_options, config, num_items_for_geom);
@@ -1081,6 +1870,10 @@ fn run_ui_internal(
         loop {
             match PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
                 BOOL(0) => {
+                    if embedded_mode && IsWindow(hwnd).0 == 0 {
+                        return Ok(current_ui_exit_code());
+                    }
+
                     let mut should_repaint = false;
                     {
                         let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
@@ -1108,6 +1901,9 @@ fn run_ui_internal(
                     }
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
+                    if embedded_mode && IsWindow(hwnd).0 == 0 {
+                        return Ok(current_ui_exit_code());
+                    }
                 }
             }
         }
@@ -1126,7 +1922,31 @@ pub fn run_ui(
         initial_app_state,
         module_runtime,
         false,
+        false,
     )
+}
+
+#[allow(dead_code)]
+pub fn run_ui_embedded(
+    cmd_options: &CmdOptions,
+    config: &RmenuConfig,
+    initial_app_state: AppState,
+    module_runtime: ModuleRuntime,
+) -> windows::core::Result<i32> {
+    run_ui_internal(
+        cmd_options,
+        config,
+        initial_app_state,
+        module_runtime,
+        false,
+        true,
+    )
+}
+
+#[allow(dead_code)]
+pub fn take_module_runtime() -> Option<ModuleRuntime> {
+    let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+    runtime_guard.take()
 }
 
 pub fn measure_ui_latencies(
@@ -1135,7 +1955,14 @@ pub fn measure_ui_latencies(
     initial_app_state: AppState,
     module_runtime: ModuleRuntime,
 ) -> windows::core::Result<UiLatencyMetrics> {
-    let _ = run_ui_internal(cmd_options, config, initial_app_state, module_runtime, true)?;
+    let _ = run_ui_internal(
+        cmd_options,
+        config,
+        initial_app_state,
+        module_runtime,
+        true,
+        false,
+    )?;
 
     let mut measure_guard = UI_MEASURE_STATE.lock().unwrap();
     let metrics = UiLatencyMetrics {

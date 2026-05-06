@@ -6,14 +6,14 @@ BEGIN
   BEGIN
     BLOCK "040904E4"
     BEGIN
-      VALUE "CompanyName", "rmenu developers"
-      VALUE "FileDescription", "dmenu clone for Windows"
-      VALUE "FileVersion", "0.1.0"
+      VALUE "CompanyName", "SynrgStudio"
+      VALUE "FileDescription", "rMenu"
+      VALUE "FileVersion", "0.2.3"
       VALUE "InternalName", "rmenu"
-      VALUE "LegalCopyright", "Copyright © 2025"
+      VALUE "LegalCopyright", "Copyright © 2026"
       VALUE "OriginalFilename", "rmenu.exe"
-      VALUE "ProductName", "rmenu"
-      VALUE "ProductVersion", "0.1.0"
+      VALUE "ProductName", "rMenu"
+      VALUE "ProductVersion", "0.2.3"
     END
   END
   BLOCK "VarFileInfo"

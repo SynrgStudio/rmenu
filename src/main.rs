@@ -3,6 +3,10 @@ mod fuzzy;
 mod launcher;
 mod modules;
 mod ranking;
+mod rmods_registry;
+#[allow(dead_code)]
+mod rsnip_companion;
+mod rtasks_companion;
 mod settings;
 mod sources;
 mod ui_win32;
@@ -10,11 +14,13 @@ mod ui_win32;
 use app_state::{AppState, LauncherItem, LauncherSource};
 use atty;
 use ranking::{rank_items, source_name};
-use settings::{parse_args, CmdOptions, RmenuConfig};
+use rsnip_companion::install_rsnip_latest;
+use rtasks_companion::install_rtasks_latest;
+use settings::{parse_args, resolve_modules_dir, CmdOptions, RmenuConfig};
 use sources::{index_cache_size_bytes, load_launcher_items};
 use std::{
     io::{self, Read},
-    path::{Path, PathBuf},
+    path::Path,
     time::Instant,
 };
 use ui_win32::{measure_ui_latencies, UiLatencyMetrics};
@@ -97,7 +103,55 @@ fn main() -> windows::core::Result<()> {
     let startup_t0 = Instant::now();
 
     let cmd_options: CmdOptions = parse_args();
+    if let Some(data_dir) = &cmd_options.data_dir {
+        std::env::set_var("RMENU_DATA_DIR", data_dir);
+    }
     let silent_mode = cmd_options.silent;
+
+    if let Some(companion) = &cmd_options.install_companion {
+        if companion.eq_ignore_ascii_case("rsnip") {
+            match install_rsnip_latest() {
+                Ok(path) => {
+                    if !silent_mode {
+                        println!("RSnip installed: {}", path.display());
+                    }
+                    std::process::exit(0);
+                }
+                Err(err) => {
+                    if !silent_mode {
+                        eprintln!("RSnip install failed: {err:?}");
+                    }
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        if companion.eq_ignore_ascii_case("rtasks") {
+            match install_rtasks_latest() {
+                Ok(path) => {
+                    if !silent_mode {
+                        println!("RTasks installed: {}", path.display());
+                    }
+                    std::process::exit(0);
+                }
+                Err(err) => {
+                    if !silent_mode {
+                        eprintln!("RTasks install failed: {err:?}");
+                    }
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        if !silent_mode {
+            eprintln!("unsupported companion install: {companion}");
+        }
+        std::process::exit(1);
+    }
+    let modules_dir = resolve_modules_dir(
+        cmd_options.modules_dir.as_deref(),
+        cmd_options.data_dir.as_deref(),
+    );
 
     let config_path_from_cli = cmd_options.config_path.as_ref().map(Path::new);
 
@@ -151,11 +205,16 @@ fn main() -> windows::core::Result<()> {
     }
 
     let final_initial_items = initial_items;
+    let initial_matching_items = if launcher_mode {
+        Vec::new()
+    } else {
+        final_initial_items.clone()
+    };
     let initial_app_state = AppState {
         current_input: String::new(),
         selected_index: 0,
         scroll_offset: 0,
-        matching_items: final_initial_items.clone(),
+        matching_items: initial_matching_items,
         all_items: final_initial_items,
         prompt: cmd_options.prompt.clone(),
         launcher_mode,
@@ -164,6 +223,9 @@ fn main() -> windows::core::Result<()> {
         source_boost_history: launcher_config.source_boost_history,
         source_boost_start_menu: launcher_config.source_boost_start_menu,
         source_boost_path: launcher_config.source_boost_path,
+        rtasks_status: None,
+        rtasks_priority: None,
+        rmods: Default::default(),
     };
 
     let case_sensitive = app_config.behavior.case_sensitive;
@@ -184,7 +246,9 @@ fn main() -> windows::core::Result<()> {
     let _module_api_version = module_runtime.api_version();
     module_runtime.register_builtin_module(Box::new(modules::BuiltinLifecycleModule));
     module_runtime.register_builtin_module(Box::new(modules::BuiltinQueryProviderModule));
-    module_runtime.load_external_descriptors(&PathBuf::from("modules"), silent_mode);
+    module_runtime.register_builtin_module(Box::new(modules::BuiltinRsnipCompanionModule));
+    module_runtime.register_builtin_module(Box::new(modules::BuiltinRtasksCompanionModule));
+    module_runtime.load_external_descriptors(&modules_dir, silent_mode);
 
     if cmd_options.modules_debug {
         println!("{}", module_runtime.modules_debug_report());

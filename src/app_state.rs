@@ -59,6 +59,60 @@ impl LauncherItem {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RtasksInputStatus {
+    Todo,
+    Doing,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RtasksInputPriority {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RmodsInstallStatusView {
+    NotInstalled,
+    Installed,
+    UpdateAvailable,
+    LocalNewer,
+    ChecksumMismatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RmodsPendingAction {
+    None,
+    Install,
+    Update,
+    Uninstall,
+}
+
+#[derive(Debug, Clone)]
+pub struct RmodsUiItem {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub kind: String,
+    pub download_url: String,
+    pub base_url: String,
+    pub sha256: String,
+    pub size: u64,
+    pub files: Vec<crate::rmods_registry::RmodsRegistryFile>,
+    pub status: RmodsInstallStatusView,
+    pub pending_action: RmodsPendingAction,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct RmodsUiState {
+    pub loaded: bool,
+    pub items: Vec<RmodsUiItem>,
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct AppState {
     pub current_input: String,
@@ -73,6 +127,9 @@ pub struct AppState {
     pub source_boost_history: i64,
     pub source_boost_start_menu: i64,
     pub source_boost_path: i64,
+    pub rtasks_status: Option<RtasksInputStatus>,
+    pub rtasks_priority: Option<RtasksInputPriority>,
+    pub rmods: RmodsUiState,
 }
 
 pub fn ensure_selection_visible(app_state: &mut AppState, max_visible_items: usize) {

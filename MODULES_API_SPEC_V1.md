@@ -76,9 +76,18 @@ ctx.selectedItem() -> Item | null
 ctx.selectedIndex() -> number
 ctx.mode() -> "launcher" | "stdin" | "command"
 ctx.hasCapability(name: string) -> boolean
+ctx.moduleSourcePath() -> string
+ctx.moduleDir() -> string
+ctx.moduleStateDir() -> string
 ```
 
 External hosts receive real snapshots for these reads. Hot query paths may receive lightweight snapshots without `items`; hooks that need selection context, such as key and command flows, receive item/selection snapshots.
+
+Path helpers:
+
+- `ctx.moduleSourcePath()` returns the loaded `.rmod` file path or rpack/module directory path.
+- `ctx.moduleDir()` returns the containing directory for `.rmod` modules and the module directory for rpack/directory modules.
+- `ctx.moduleStateDir()` returns stable user-state storage under `<data_dir>/state/modules/<module-name>` when available. Modules should store user-created data there instead of inside installed rpack folders.
 
 ### Utilities
 
@@ -133,7 +142,7 @@ Fields:
 - `title`: main visible text.
 - `subtitle`: optional detail.
 - `source`: visible or logical source.
-- `target`: destination to launch when the item represents a direct launch.
+- `target`: destination to launch when the item represents a direct launch. Targets prefixed with `runas:` request elevated launch through the core launch backend.
 - `quickSelectKey`: visible quick key (`"1".."9"|"0"`).
 - `badge`: short trailing text.
 - `hint`: contextual help.

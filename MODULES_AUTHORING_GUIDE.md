@@ -137,6 +137,7 @@ Rules:
 
 - `id` and `title` are required.
 - `target` indicates the executable/launchable destination.
+- Prefix `target` with `runas:` only when the item intentionally requests an elevated Windows launch, for example `runas:wt.exe`.
 - Long or invalid fields may be truncated or discarded.
 - The core decides final merge, dedupe, ranking, and rendering.
 
@@ -263,13 +264,41 @@ This pattern keeps two UX paths separate: passive global launcher and explicit l
 
 ---
 
-## 11. Design rules for authors
+## 11. Pattern: helper-backed modules
+
+Use a helper-backed module when the module command needs an external tool, script, overlay, or long-running side effect.
+
+Rules:
+
+- Keep the module small: recognize intent and return a launch item.
+- Keep helper defaults in the `.rmod` `config.json` block when possible.
+- Prefer paths relative to the module/project layout for portable development.
+- If a helper is missing, show a warning item, input accessory, or `ctx.toast(...)`; do not return a broken launch item silently.
+- Do not put secrets in `.rmod` defaults.
+
+Example target shape:
+
+```js
+{
+  id: "snip::start",
+  title: "Start snip",
+  subtitle: "helper-backed",
+  source: "snip",
+  target: `${config.python} ${config.sniptool} --snip`,
+  badge: "snip"
+}
+```
+
+---
+
+## 12. Design rules for authors
 
 1. Hooks must be fast and deterministic.
 2. Do not block on I/O without your own timeout.
 3. Avoid synchronous disk I/O in `onQueryChange`; cache data in memory and update the cache after writes.
 4. Providers should return a small set of relevant items.
 5. Do not assume `ctx.items()` is populated on every hot query hook; use key/command flows when selection context is required.
+6. Store user-created data under `ctx.moduleStateDir()` when available. Do not write persistent user data into an installed rpack directory because rpack updates replace package files.
 6. Do not assume control of UI or pixels.
 7. Normalize internal inputs before processing.
 8. Treat errors as recoverable.
@@ -280,7 +309,7 @@ This pattern keeps two UX paths separate: passive global launcher and explicit l
 
 ---
 
-## 12. IPC validation and safety
+## 13. IPC validation and safety
 
 The runtime may trim, normalize, or discard:
 
@@ -294,7 +323,7 @@ Authors must not depend on unfiltered payloads.
 
 ---
 
-## 13. Recommended workflow
+## 14. Recommended workflow
 
 1. Create a directory module.
 2. Declare minimum metadata.

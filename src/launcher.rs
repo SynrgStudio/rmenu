@@ -1,12 +1,19 @@
 use std::io;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
+use crate::rsnip_companion::{RsnipCommand, RsnipCompanion, RsnipIpcResponse};
+use crate::rtasks_companion::{RtasksCommand, RtasksCompanion, RtasksIpcResponse};
 use windows::core::PCWSTR;
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub fn centered_text_y(row_top: i32, row_height: i32, font_size: i32) -> i32 {
     row_top + ((row_height - font_size).max(0) / 2)
@@ -121,8 +128,8 @@ fn should_fallback_to_cmd(raw_target: &str, file_part: &str) -> bool {
         || lowered.starts_with("cmd.exe ")
 }
 
-fn launch_with_shell_execute(file: &str, args: Option<&str>) -> io::Result<()> {
-    let operation = to_wstring("open");
+fn launch_with_shell_execute(verb: &str, file: &str, args: Option<&str>) -> io::Result<()> {
+    let operation = to_wstring(verb);
     let file_w = to_wstring(file);
     let args_w = args.map(to_wstring);
 
@@ -147,7 +154,7 @@ fn launch_with_shell_execute(file: &str, args: Option<&str>) -> io::Result<()> {
         Err(io::Error::new(
             io::ErrorKind::Other,
             format!(
-                "ShellExecuteW failed for '{file}' with code {}",
+                "ShellExecuteW verb '{verb}' failed for '{file}' with code {}",
                 result.0 as usize
             ),
         ))
@@ -170,8 +177,123 @@ fn launch_with_cmd_start(raw_target: &str) -> io::Result<()> {
         })
 }
 
-pub fn launch_target(target: &str) -> io::Result<()> {
+fn launch_hidden_target(raw_target: &str) -> io::Result<()> {
+    let (file_part, args_part) = split_executable_and_args(raw_target);
+    if file_part.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "hidden target executable is empty",
+        ));
+    }
+
+    if !looks_like_url(file_part) && looks_like_path(file_part) && !Path::new(file_part).exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("target path not found: {file_part}"),
+        ));
+    }
+
+    let mut command = Command::new(file_part);
+    if let Some(args) = args_part {
+        #[cfg(windows)]
+        command.raw_arg(args);
+        #[cfg(not(windows))]
+        command.args(args.split_whitespace());
+    }
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command.spawn().map(|_| ()).map_err(|err| {
+        io::Error::new(
+            err.kind(),
+            format!("hidden launch failed for '{raw_target}': {err}"),
+        )
+    })
+}
+
+fn launch_rsnip_command(command: &str) -> io::Result<()> {
+    let command = match command.to_ascii_lowercase().as_str() {
+        "snip" => RsnipCommand::Snip,
+        "record" | "rec" => RsnipCommand::Record,
+        "ocr" => RsnipCommand::Ocr,
+        other => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unsupported rsnip command: {other}"),
+            ))
+        }
+    };
+
+    let companion = RsnipCompanion::discover().map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("rsnip companion not available: {err:?}"),
+        )
+    })?;
+    match companion.ensure_and_send(command).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("rsnip companion command failed: {err:?}"),
+        )
+    })? {
+        RsnipIpcResponse::Ok { .. } => Ok(()),
+        RsnipIpcResponse::Error { message } => Err(io::Error::new(io::ErrorKind::Other, message)),
+    }
+}
+
+fn launch_rtasks_command(command: &str) -> io::Result<()> {
+    let command = match command.to_ascii_lowercase().as_str() {
+        "panel" | "tasks" => RtasksCommand::Panel,
+        other => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unsupported rtasks command: {other}"),
+            ))
+        }
+    };
+
+    let companion = RtasksCompanion::discover().map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("rtasks companion not available: {err:?}"),
+        )
+    })?;
+    match companion.ensure_and_send(command).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("rtasks companion command failed: {err:?}"),
+        )
+    })? {
+        RtasksIpcResponse::Ok { .. } => Ok(()),
+        RtasksIpcResponse::Error { message } => Err(io::Error::new(io::ErrorKind::Other, message)),
+    }
+}
+
+fn launch_verb_and_target(target: &str) -> (&'static str, &str) {
     let raw_target = target.trim();
+    raw_target
+        .strip_prefix("runas:")
+        .map_or(("open", raw_target), |elevated| ("runas", elevated.trim()))
+}
+
+pub fn launch_target(target: &str) -> io::Result<()> {
+    if let Some(command) = target.trim().strip_prefix("rsnip:") {
+        return launch_rsnip_command(command.trim());
+    }
+
+    if let Some(command) = target.trim().strip_prefix("rtasks:") {
+        return launch_rtasks_command(command.trim());
+    }
+
+    if let Some(hidden_target) = target.trim().strip_prefix("hidden:") {
+        return launch_hidden_target(hidden_target.trim());
+    }
+
+    let (verb, raw_target) = launch_verb_and_target(target);
     if raw_target.is_empty() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -194,15 +316,15 @@ pub fn launch_target(target: &str) -> io::Result<()> {
         ));
     }
 
-    match launch_with_shell_execute(file_part, args_part) {
+    match launch_with_shell_execute(verb, file_part, args_part) {
         Ok(()) => Ok(()),
         Err(shell_err) => {
-            if should_fallback_to_cmd(raw_target, file_part) {
+            if verb == "open" && should_fallback_to_cmd(raw_target, file_part) {
                 launch_with_cmd_start(raw_target)
             } else {
                 Err(io::Error::new(
                     shell_err.kind(),
-                    format!("failed to launch '{raw_target}': {shell_err}"),
+                    format!("failed to launch '{raw_target}' with verb '{verb}': {shell_err}"),
                 ))
             }
         }
@@ -212,7 +334,8 @@ pub fn launch_target(target: &str) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        looks_like_path, looks_like_url, should_fallback_to_cmd, split_executable_and_args,
+        launch_hidden_target, launch_rsnip_command, launch_verb_and_target, looks_like_path,
+        looks_like_url, should_fallback_to_cmd, split_executable_and_args,
     };
 
     #[test]
@@ -246,6 +369,28 @@ mod tests {
         assert!(looks_like_path("C:\\Windows\\notepad.exe"));
         assert!(looks_like_path(".\\script.bat"));
         assert!(!looks_like_path("notepad"));
+    }
+
+    #[test]
+    fn launch_verb_and_target_detects_runas_prefix() {
+        assert_eq!(
+            launch_verb_and_target("notepad.exe"),
+            ("open", "notepad.exe")
+        );
+        assert_eq!(
+            launch_verb_and_target("runas:wt.exe powershell -NoExit -Command pi"),
+            ("runas", "wt.exe powershell -NoExit -Command pi")
+        );
+    }
+
+    #[test]
+    fn hidden_launch_rejects_missing_path() {
+        assert!(launch_hidden_target("C:\\definitely-missing-rsnip.exe snip").is_err());
+    }
+
+    #[test]
+    fn rsnip_launch_rejects_unknown_command() {
+        assert!(launch_rsnip_command("unknown").is_err());
     }
 
     #[test]

@@ -8,7 +8,7 @@ Historical or exploratory decisions may live under `docs/historico/`. This file 
 
 ## DEC-001 — Modular core v1 is frozen around small primitives
 
-Status: Accepted  
+Status: Accepted
 Date: 2026-04-24
 
 ### Context
@@ -40,7 +40,7 @@ New features must be attempted as modules first. A new primitive is accepted onl
 
 ## DEC-002 — `.rmod` v1 is plain text
 
-Status: Accepted  
+Status: Accepted
 Date: 2026-04-24
 
 ### Context
@@ -63,7 +63,7 @@ If a packed or binary format exists in the future, it must use a different exten
 
 ## DEC-003 — The core renders; modules declare intent
 
-Status: Accepted  
+Status: Accepted
 Date: 2026-04-24
 
 ### Context
@@ -84,7 +84,7 @@ Modules cannot draw UI, access Win32/GDI, or modify global layout. They can only
 
 ## DEC-004 — Fail the module, not the launcher
 
-Status: Accepted  
+Status: Accepted
 Date: 2026-04-24
 
 ### Context
@@ -105,7 +105,7 @@ Errors, timeouts, and invalid payloads are isolated per module/host. The launche
 
 ## DEC-005 — Local intents use an explicit prefix and `replaceItems`
 
-Status: Accepted  
+Status: Accepted
 Date: 2026-04-24
 
 ### Context
@@ -127,3 +127,207 @@ Examples:
 - The global launcher is not polluted by local results without explicit intent.
 - The module can pre-sort exact/prefix/contains matches inside its scoped list.
 - No magic boosts, semantic hints, or core ranking changes are added.
+
+---
+
+## DEC-006 — AHK suite migration uses minimal general core primitives
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+The AHK suite migration needs several Command Center-style modules and helper-backed tools. The core is frozen v1, so the migration must not add local workflow behavior directly to the core.
+
+### Decision
+
+The current migration wave accepts only these general core changes:
+
+- robust module directory resolution for dev/debug and installed usage;
+- minimal elevated launch support through Windows `runas`;
+- lightweight rmenu-style toast feedback for module/helper status.
+
+The active module wave is split into small cohesive modules such as `web-query`, `url-open`, `terminal`, `pi-launcher`, helper launchers, and existing `shortcuts` guidance.
+
+### Consequences
+
+- Anytype, TweetFlow, full item actions, `onSubmit`, copy actions, keep-open flows, local module secret config, and daemon features remain deferred.
+- Global hotkeys, window management, text expansion, browser gestures, taskbar volume, and similar resident automation stay out of the core and ordinary `.rmod` modules.
+- See `docs/ahk-migration/DECISION.md` for the session-specific migration boundary.
+
+---
+
+## DEC-007 — RSnip is an optional native companion capability
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+RSnip is a separate native snipping/recording/OCR tool. It can run standalone with its own daemon and global hotkeys, but the intended combined product experience is that installing RSnip next to rMenu makes RSnip feel like part of rMenu.
+
+A launcher-target wrapper is not enough for that experience. A command such as `snip` in rMenu must not shell out through PowerShell or a visible console, and should not rely on `rsnip.exe snip` as the normal integration path. The menu path and hotkey path should converge on the same RSnip daemon action semantics.
+
+### Decision
+
+When RSnip is installed, rMenu treats it as a first-class optional companion capability:
+
+- rMenu discovers RSnip through an explicit and deterministic discovery order.
+- rMenu daemon coordinates RSnip lifecycle in integrated mode.
+- rMenu menu actions for snip, record, and OCR call RSnip through direct IPC, not through PowerShell or generic process-launch targets.
+- Standalone RSnip remains valid: if rMenu is absent, RSnip keeps running its own daemon and global hotkeys.
+- Integrated mode must have one clear owner/coordinator for global hotkeys to avoid duplicate registration and stale shortcut capture.
+
+Discovery order for the current implementation plan:
+
+1. Explicit rMenu config or environment override, if added by the implementation task.
+2. Development path: `C:\rSnip\target\release\rsnip.exe`.
+3. Future packaged install location or registry marker.
+4. PATH fallback only if it is safe and unambiguous.
+
+The IPC contract is RSnip's named-pipe protocol on `\\.\pipe\rsnip`, with JSON commands for `snip`, `record`, `ocr`, and shutdown/status-style reachability as supported by RSnip.
+
+### Consequences
+
+- Transitional `.rmod` wrappers for `snip`, `record`, and `ocr` are not the target architecture.
+- rMenu needs a small native RSnip companion client for discovery, lifecycle, IPC, and error reporting.
+- The core does not absorb RSnip capture/record/OCR implementation; RSnip remains the owner of those features.
+- User-facing errors should say whether RSnip is missing, unreachable, or version-incompatible.
+- Documentation and manual validation must cover both standalone and integrated modes.
+
+---
+
+## DEC-008 — rMenu uses a persistent data root for modules, companions, config, and state
+
+Status: Accepted
+Date: 2026-05-05
+
+### Context
+
+Users need a simple persistent rMenu setup. Modules, optional native companions, configuration, and state should live outside the application install directory. The default Windows data root is `C:\rMenuData`, and a later rMenu install should be able to reuse that folder without overwriting existing data.
+
+RSnip is the first native companion to use this model. Future companions such as rTask should fit the same layout.
+
+### Decision
+
+rMenu has a persistent data root, referred to as `<data_dir>`. On Windows, the default is `C:\rMenuData`. The official layout is:
+
+```text
+<data_dir>\
+  modules\
+  companions\
+    rsnip\
+      rsnip.exe
+      config\
+      state\
+      logs\
+  config\
+  state\
+```
+
+Directory purposes:
+
+- `modules\`: `.rmod` files and directory modules discovered by rMenu.
+- `companions\`: native companion applications managed or discovered by rMenu.
+- `companions\rsnip\`: rMenu-managed RSnip install root.
+- `config\`: rMenu-level configuration owned by the selected data root.
+- `state\`: rMenu-level runtime state, metadata, install records, and future non-cache state.
+
+`modules_dir` is derived from `<data_dir>\modules` by default. Existing `--modules-dir` and `RMENU_MODULES_DIR` behavior remains valid as an explicit modules-only override for development, debugging, and migration.
+
+A future installer should default to `C:\rMenuData` and optionally write a small bootstrap pointer under `%APPDATA%\rmenu` if the user selects another data root. The selected folder is reused as-is when it already contains rMenu data. The installer must not overwrite existing modules, companions, config, or state without explicit user approval.
+
+### RSnip companion layout
+
+The rMenu-managed RSnip executable path is:
+
+```text
+<data_dir>\companions\rsnip\rsnip.exe
+```
+
+Future portable RSnip config/state/logs should live under:
+
+```text
+<data_dir>\companions\rsnip\config\
+<data_dir>\companions\rsnip\state\
+<data_dir>\companions\rsnip\logs\
+```
+
+Until RSnip supports portable config/state overrides, rMenu may still install and run the executable from this location while RSnip uses its current standalone config behavior.
+
+### Consequences
+
+- rMenu-managed companion installs are portable with the data root.
+- RSnip discovery must prefer `<data_dir>\companions\rsnip\rsnip.exe` once data-dir support exists.
+- The data root is a general UX primitive, not an RSnip-specific path.
+- The installer can support "choose existing data folder" without requiring module or companion reinstall.
+
+---
+
+## DEC-009 — rMods registry is core-owned
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+Installing and updating modules requires filesystem write access to the rMenu data root. Implementing a store as a normal `.rmod` would make a module privileged enough to install, update, or remove other modules.
+
+### Decision
+
+`/rmods` is owned by rMenu core. It fetches the generated GitHub registry, verifies package integrity, stages installs, updates installed metadata, and reloads modules. Registry modules can be single-file `rmod` packages or folder-based `rpack` packages.
+
+### Consequences
+
+- Modules cannot self-grant install permissions.
+- `registry.json` is generated by the registry repository workflow and is not edited manually.
+- `rpack` updates replace package contents, so user-created module data belongs in `<data_dir>\state\modules\<module-name>`.
+
+---
+
+## DEC-010 — RTasks is backend/panel companion; rMenu owns task input
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+RTasks has its own UI, but opening a second quick-add bar from rMenu creates redundant input. rMenu is already the active text input surface.
+
+### Decision
+
+Typing `t ` in rMenu enters embedded RTasks mode. Enter sends an `add_task` IPC request to RTasks. Status and priority are edited in rMenu with `Alt+1/2/3` and `Alt+Q/W/E`. The only public launcher alias for the RTasks panel is `tasks`; the daemon-level `Ctrl+Space` hotkey also toggles the panel.
+
+### Consequences
+
+- rMenu does not open RTasks Quick Add for integrated capture.
+- RTasks remains useful standalone.
+- Integrated panel focus restoration belongs to the rMenu/RTasks companion boundary.
+
+---
+
+## DEC-011 — RSnip launcher aliases are intentionally minimal
+
+Status: Accepted
+Date: 2026-05-06
+
+### Context
+
+RSnip exposes three user actions through rMenu. Extra synonyms make stale history/cache entries and accidental matches harder to reason about.
+
+### Decision
+
+The rMenu-facing RSnip aliases are limited to:
+
+```text
+snip
+rec
+ocr
+```
+
+These dispatch to direct RSnip IPC and do not shell through PowerShell or CMD.
+
+### Consequences
+
+- `record`, `screen`, `screenshot`, and `text` are not public rMenu aliases.
+- The old wrapper `.rmod` files are not part of the integrated path.

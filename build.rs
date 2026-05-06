@@ -20,6 +20,7 @@ fn main() {
     copy_if_exists("config_example.ini", dest_path);
     copy_if_exists("README.md", dest_path);
 
+    println!("cargo:rerun-if-changed=resource.rc");
     println!("cargo:rerun-if-changed=config_example.ini");
     println!("cargo:rerun-if-changed=README.md");
 }

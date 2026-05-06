@@ -18,9 +18,22 @@ Operations, diagnostics, and recovery guide for the `rmenu` module system.
 
 ```powershell
 rmenu.exe --modules-debug
+rmenu.exe --modules-dir .\modules --modules-debug
 ```
 
-Prints module status/telemetry and exits.
+`--modules-debug` prints module status/telemetry and exits.
+
+`--modules-dir <PATH>` overrides module discovery for this run. It is intended for local development, debugging, and portable installs where modules are not in the default location.
+
+Module directory resolution order:
+
+1. `--modules-dir <PATH>` when provided.
+2. `RMENU_MODULES_DIR` environment variable when set and non-empty.
+3. `%APPDATA%\rmenu\modules` when available.
+4. `modules` next to `rmenu.exe`.
+5. `modules` relative to the current working directory as a development fallback.
+
+If a higher-priority candidate does not exist, the resolver continues to the next candidate. `--modules-debug` must report the final resolved directory so install and debug sessions are reproducible.
 
 ---
 
@@ -59,6 +72,34 @@ rmenu.exe --modules-debug
 ```
 
 See also `MODULES_QUICKSTART.md`.
+
+### `/rmods` registry installs
+
+The `/rmods` command is a core-owned installer UI for `.rmod` single-file packages and `rpack` folder modules published in a GitHub registry repository. The registry layout is:
+
+```text
+rmenu-rmods/
+  modules/
+    my-module.rmod
+  rpacks/
+    my-folder-module/
+      module.toml
+      module.js
+      config.json
+      README.md
+  registry.json
+  scripts/
+    generate-registry.*
+  .github/
+    workflows/
+      update-registry.yml
+```
+
+`registry.json` is generated from `modules/*.rmod` and `rpacks/*` by GitHub Actions. Maintainers add or update module files and push; they do not edit the registry by hand.
+
+Schema v1 supports `rmod` and `rpack` package kinds and includes module identity, version, description, integrity metadata, tags, and optional rMenu compatibility. See `docs/rmods-registry.md` for the full schema.
+
+Use `/rmods` in the launcher to fetch the registry, mark modules for change with `Space`, refresh with `F5`/`Ctrl+R`, select updates with `Ctrl+U`, and apply marked changes with `Enter`. Markers mean `[x]` installed, `[ ]` not installed, and `[/]` pending change. Installed files land in `<data_dir>\modules`, with supporting cache/state under `<data_dir>\state`.
 
 ---
 
@@ -324,11 +365,14 @@ Expected result:
 - the row shows `[bs]` as visual cue;
 - Enter launches the saved target.
 
-User-defined shortcuts are persisted in:
+User-defined shortcuts are persisted in module state:
 
 ```text
-modules/shortcuts.user.json
+<data_dir>\state\modules\shortcuts\shortcuts.user.json
+<data_dir>\state\modules\shortcuts\shortcuts.pending.json
 ```
+
+Older local installs may have used the installed module directory. Move those files to the state directory before updating the `shortcuts` rpack if you need to preserve them.
 
 ### Latency validation
 
