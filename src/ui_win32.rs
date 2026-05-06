@@ -70,6 +70,7 @@ const INSTALL_CLOSE_TIMER_ID: usize = 42;
 const INSTALL_START_TIMER_ID: usize = 43;
 const WM_INSTALL_PROGRESS: u32 = 0x8000 + 1;
 const WM_INSTALL_DONE: u32 = 0x8000 + 2;
+const INPUT_PLACEHOLDER_TEXT: &str = concat!("rMenu ", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, Copy)]
 pub struct UiLatencyMetrics {
@@ -197,6 +198,22 @@ fn draw_text_w(hdc: windows::Win32::Graphics::Gdi::HDC, x: i32, y: i32, text: &s
     unsafe {
         TextOutW(hdc, x, y, &utf16);
     }
+}
+
+fn blend_color(left: COLORREF, right: COLORREF, right_weight: u32) -> COLORREF {
+    let left_weight = 100u32.saturating_sub(right_weight);
+    let left_value = left.0;
+    let right_value = right.0;
+    let blend_channel = |shift: u32| -> u32 {
+        let left_channel = (left_value >> shift) & 0xff;
+        let right_channel = (right_value >> shift) & 0xff;
+        ((left_channel * left_weight) + (right_channel * right_weight)) / 100
+    };
+    COLORREF(blend_channel(0) | (blend_channel(8) << 8) | (blend_channel(16) << 16))
+}
+
+fn placeholder_text_color(config: &RmenuConfig) -> COLORREF {
+    blend_color(config.colors.background, config.colors.foreground, 45)
 }
 
 fn accessory_text_color(kind: InputAccessoryKind, config: &RmenuConfig) -> COLORREF {
@@ -1203,7 +1220,11 @@ unsafe extern "system" fn window_proc(
                     x_offset += prompt_text.len() as i32 * char_w;
                 }
 
-                if !app_state.current_input.is_empty() {
+                if app_state.current_input.is_empty() {
+                    SetTextColor(hdc, placeholder_text_color(&config));
+                    draw_text_w(hdc, x_offset, input_text_y, INPUT_PLACEHOLDER_TEXT);
+                    SetTextColor(hdc, config.colors.foreground);
+                } else {
                     draw_text_w(hdc, x_offset, input_text_y, &app_state.current_input);
                 }
 
