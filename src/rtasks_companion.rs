@@ -7,6 +7,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::os::windows::{ffi::OsStrExt, process::CommandExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 #[cfg(windows)]
@@ -21,8 +22,17 @@ const RTASKS_PIPE_PATH: &str = r"\\.\pipe\rtasks";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_millis(1_000);
 const DEFAULT_START_TIMEOUT: Duration = Duration::from_millis(2_500);
 const RETRY_DELAY: Duration = Duration::from_millis(50);
+const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(5);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[derive(Debug, Clone)]
+struct DiscoveryCacheEntry {
+    checked_at: Instant,
+    path: Option<PathBuf>,
+}
+
+static RTASKS_DISCOVERY_CACHE: Mutex<Option<DiscoveryCacheEntry>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -79,7 +89,7 @@ pub struct RtasksCompanion {
 
 impl RtasksCompanion {
     pub fn discover() -> Result<Self, RtasksError> {
-        discover_rtasks_path()
+        discover_rtasks_path_cached()
             .map(|exe_path| Self { exe_path })
             .ok_or(RtasksError::NotInstalled)
     }
@@ -147,6 +157,7 @@ pub fn install_rtasks_latest() -> Result<PathBuf, RtasksError> {
         Ok(())
     })?;
 
+    set_rtasks_discovery_cache(Some(destination.clone()));
     RtasksCompanion {
         exe_path: destination.clone(),
     }
@@ -185,6 +196,29 @@ fn wide_null(value: &str) -> Vec<u16> {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect()
+}
+
+fn set_rtasks_discovery_cache(path: Option<PathBuf>) {
+    let mut cache = RTASKS_DISCOVERY_CACHE.lock().unwrap();
+    *cache = Some(DiscoveryCacheEntry {
+        checked_at: Instant::now(),
+        path,
+    });
+}
+
+fn discover_rtasks_path_cached() -> Option<PathBuf> {
+    {
+        let cache = RTASKS_DISCOVERY_CACHE.lock().unwrap();
+        if let Some(entry) = cache.as_ref() {
+            if entry.checked_at.elapsed() <= DISCOVERY_CACHE_TTL {
+                return entry.path.clone();
+            }
+        }
+    }
+
+    let path = discover_rtasks_path();
+    set_rtasks_discovery_cache(path.clone());
+    path
 }
 
 pub fn discover_rtasks_path() -> Option<PathBuf> {

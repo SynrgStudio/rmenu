@@ -466,15 +466,42 @@ fn initial_app_state(prepared: &PreparedRmenu) -> AppState {
 fn show_warm_rmenu(
     prepared: &PreparedRmenu,
     runtime: modules::ModuleRuntime,
+    open_index: u64,
+    hotkey_received_at: Instant,
 ) -> modules::ModuleRuntime {
     let started = Instant::now();
+    let open_kind = if open_index == 1 { "cold" } else { "warm" };
+    log_line(&format!(
+        "daemon hotkey open start index={} kind={} since_hotkey_ms={}",
+        open_index,
+        open_kind,
+        hotkey_received_at.elapsed().as_millis()
+    ));
+
     let app_state = initial_app_state(prepared);
-    match ui_win32::run_ui_embedded(&prepared.cmd_options, &prepared.config, app_state, runtime) {
-        Ok(exit_code) => {
+    match ui_win32::run_ui_embedded_timed(
+        &prepared.cmd_options,
+        &prepared.config,
+        app_state,
+        runtime,
+    ) {
+        Ok((exit_code, timings)) => {
             log_line(&format!(
-                "rmenu closed exit_code={} elapsed_ms={}",
+                "daemon hotkey open timings index={} kind={} exit_code={} total_ms={} since_hotkey_ms={} pre_window_setup_ms={} module_on_load_ms={} initial_matching_update_ms={} register_class_ms={} create_window_ms={} window_visible_ms={} first_paint_ms={} input_ready_ms={} message_loop_ms={}",
+                open_index,
+                open_kind,
                 exit_code,
-                started.elapsed().as_millis()
+                timings.total_ms,
+                hotkey_received_at.elapsed().as_millis(),
+                timings.pre_window_setup_ms,
+                timings.module_on_load_ms,
+                timings.initial_matching_update_ms,
+                timings.register_class_ms,
+                timings.create_window_ms,
+                timings.time_to_window_visible_ms,
+                timings.time_to_first_paint_ms,
+                timings.time_to_input_ready_ms,
+                timings.message_loop_ms,
             ));
         }
         Err(err) => {
@@ -482,8 +509,16 @@ fn show_warm_rmenu(
         }
     }
 
-    ui_win32::take_module_runtime()
-        .unwrap_or_else(|| configure_runtime(&prepared.config, &prepared.modules_dir, true))
+    let runtime_take_started = Instant::now();
+    let runtime = ui_win32::take_module_runtime()
+        .unwrap_or_else(|| configure_runtime(&prepared.config, &prepared.modules_dir, true));
+    log_line(&format!(
+        "daemon hotkey runtime handoff index={} handoff_ms={} total_elapsed_ms={}",
+        open_index,
+        runtime_take_started.elapsed().as_millis(),
+        started.elapsed().as_millis()
+    ));
+    runtime
 }
 
 unsafe extern "system" fn daemon_window_proc(
@@ -782,6 +817,7 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
 
     let mut rtasks_panel_open = false;
     let mut rtasks_panel_restore_hwnd: Option<HWND> = None;
+    let mut rmenu_open_count: u64 = 0;
     let mut msg = MSG::default();
     loop {
         let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
@@ -790,7 +826,9 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
         }
 
         if msg.message == WM_HOTKEY && msg.wParam.0 == HOTKEY_ID as usize {
-            runtime = show_warm_rmenu(&prepared, runtime);
+            let hotkey_received_at = Instant::now();
+            rmenu_open_count = rmenu_open_count.saturating_add(1);
+            runtime = show_warm_rmenu(&prepared, runtime, rmenu_open_count, hotkey_received_at);
         } else if msg.message == WM_HOTKEY && msg.wParam.0 == RTASKS_PANEL_HOTKEY_ID as usize {
             if let Ok(companion) = RtasksCompanion::discover() {
                 if rtasks_panel_open {

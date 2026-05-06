@@ -7,6 +7,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::os::windows::{ffi::OsStrExt, process::CommandExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 #[cfg(windows)]
@@ -21,8 +22,17 @@ const RSNIP_PIPE_PATH: &str = r"\\.\pipe\rsnip";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_millis(1_000);
 const DEFAULT_START_TIMEOUT: Duration = Duration::from_millis(2_000);
 const RETRY_DELAY: Duration = Duration::from_millis(50);
+const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(5);
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[derive(Debug, Clone)]
+struct DiscoveryCacheEntry {
+    checked_at: Instant,
+    path: Option<PathBuf>,
+}
+
+static RSNIP_DISCOVERY_CACHE: Mutex<Option<DiscoveryCacheEntry>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -71,7 +81,7 @@ pub struct RsnipCompanion {
 
 impl RsnipCompanion {
     pub fn discover() -> Result<Self, RsnipError> {
-        discover_rsnip_path()
+        discover_rsnip_path_cached()
             .map(|exe_path| Self { exe_path })
             .ok_or(RsnipError::NotInstalled)
     }
@@ -126,6 +136,7 @@ pub fn install_rsnip_latest() -> Result<PathBuf, RsnipError> {
         Ok(())
     })?;
 
+    set_rsnip_discovery_cache(Some(destination.clone()));
     RsnipCompanion {
         exe_path: destination.clone(),
     }
@@ -145,6 +156,7 @@ pub fn install_rsnip_from_dev() -> Result<PathBuf, RsnipError> {
     let destination = companion_rsnip_path_from_data_dir(None);
     prepare_rsnip_install_dirs(&destination)?;
     fs::copy(&source, &destination).map_err(io_error)?;
+    set_rsnip_discovery_cache(Some(destination.clone()));
     RsnipCompanion {
         exe_path: destination.clone(),
     }
@@ -183,6 +195,29 @@ fn wide_null(value: &str) -> Vec<u16> {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect()
+}
+
+fn set_rsnip_discovery_cache(path: Option<PathBuf>) {
+    let mut cache = RSNIP_DISCOVERY_CACHE.lock().unwrap();
+    *cache = Some(DiscoveryCacheEntry {
+        checked_at: Instant::now(),
+        path,
+    });
+}
+
+fn discover_rsnip_path_cached() -> Option<PathBuf> {
+    {
+        let cache = RSNIP_DISCOVERY_CACHE.lock().unwrap();
+        if let Some(entry) = cache.as_ref() {
+            if entry.checked_at.elapsed() <= DISCOVERY_CACHE_TTL {
+                return entry.path.clone();
+            }
+        }
+    }
+
+    let path = discover_rsnip_path();
+    set_rsnip_discovery_cache(path.clone());
+    path
 }
 
 pub fn discover_rsnip_path() -> Option<PathBuf> {

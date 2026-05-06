@@ -1,7 +1,7 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-06 10:00
+updated_at: 2026-05-06 22:15
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -1286,3 +1286,203 @@ Next:
 - Removed generated/local-only cleanup artifacts from the rMenu worktree: `dist/`, local installed `modules/*` copies, old transitional snip/screen/OCR wrappers, `installer/`, and `codebase-report.md`.
 - Added comprehensive companion/rMods workflow docs.
 - Validation: `cargo fmt --all`, `cargo check`, `cargo test` all passed.
+
+### 2026-05-06 21:00 — plan-cont daemon latency replan
+
+Files changed:
+
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- Not run; planning/documentation-only changes.
+
+Context:
+
+- User measured direct `rmenu.exe --metrics`: window visible/input ready around 23ms, search p95 under 1ms, dataset 1091 items.
+- `--modules-debug` showed 4 external descriptors/hosts loaded and healthy.
+- Conclusion: perceived 1-3s latency is likely in daemon hotkey/reopen lifecycle, not fuzzy search or direct launcher startup.
+
+Plan added:
+
+- T066 instrumentation for daemon hotkey-to-visible latency.
+- T067 avoid repeated module `onLoad` on every daemon reopen.
+- T068 keep external module hosts hot across daemon UI sessions.
+- T069 cache RSnip/RTasks companion discovery in hot paths.
+- T070 defer noncritical provider/decorator work until after input is visible.
+- T071 resident show/hide daemon UI if measurement proves it is needed.
+- T072 blocked manual release-mode performance acceptance.
+
+Next:
+
+- `/start-cont` beginning with T066.
+
+### 2026-05-06 21:05 — T066 claimed
+
+Task: T066 — Instrument daemon hotkey-to-visible latency
+
+Scope:
+
+- Add release-safe timing instrumentation for daemon hotkey open/reopen path.
+- Measure pre-window setup, module on-load, matching update, window visible/first paint, close/runtime handoff.
+
+Validation planned:
+
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- targeted daemon log smoke if feasible without manual interaction.
+
+### 2026-05-06 21:25 — T066-T068 daemon timing checkpoint
+
+Tasks:
+
+- T066 — Instrument daemon hotkey-to-visible latency: done.
+- T067 — Avoid repeated module `onLoad` work on every daemon reopen: done by evidence/no code change.
+- T068 — Keep external module hosts hot across daemon UI sessions: done by evidence/no code change.
+
+Files changed:
+
+- `src/ui_win32.rs`
+- `src/daemon_main.rs`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test`: OK
+- `cargo build --release`: OK
+- Release daemon smoke: OK; timing logs emitted.
+
+Evidence:
+
+- Controlled release daemon smoke with temporary `ctrl+alt+f12` hotkey produced daemon timing lines.
+- Window visible time was about 63-66ms; first paint/input ready about 65-70ms.
+- `pre_window_setup_ms`, `module_on_load_ms`, and `initial_matching_update_ms` were around 0-1ms in the smoke.
+- Host-count smoke showed `rmenu-module-host.exe` count stabilized at 4 and stayed stable across repeated opens.
+
+Next:
+
+- Continue with T069 if hot-path companion discovery still needs cache work.
+
+### 2026-05-06 21:30 — T069 claimed
+
+Task: T069 — Cache companion discovery in the daemon/runtime hot path
+
+Scope:
+
+- Add short-lived cached discovery for RSnip/RTasks companion paths.
+- Invalidate/update cache after installs.
+- Preserve normal explicit install/update behavior.
+
+Validation planned:
+
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+
+### 2026-05-06 21:45 — T069 done, T070 claimed
+
+Tasks:
+
+- T069 — Cache companion discovery in daemon/runtime hot path: done.
+- T070 — Defer noncritical module/provider work until after input is visible: claimed.
+
+Files changed for T069:
+
+- `src/rsnip_companion.rs`
+- `src/rtasks_companion.rs`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test`: OK
+- `cargo build --release`: OK
+
+Next:
+
+- Implement T070 by skipping initial provider/query work for empty daemon UI input before the first window is visible.
+
+### 2026-05-06 22:00 — T070 done, T071 cancelled
+
+Tasks:
+
+- T070 — Defer noncritical module/provider work until after input is visible: done.
+- T071 — Convert daemon embedded UI to resident show/hide window if needed: cancelled for now.
+
+Files changed:
+
+- `src/ui_win32.rs`
+- `src/daemon_main.rs`
+- `src/rsnip_companion.rs`
+- `src/rtasks_companion.rs`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test`: OK
+- `cargo build --release`: OK
+- Release daemon timing smoke: OK
+
+Evidence:
+
+- After T070, controlled release smoke showed `window_visible_ms` about 62-64ms and `first_paint_ms`/`input_ready_ms` about 63-69ms.
+- Warm total timing in smoke remains ~1.5s only because the script intentionally waits before closing the UI; visible/input-ready timings are under target.
+- Resident show/hide is not justified yet by measured data.
+
+Notes:
+
+- There is still an intentional 50ms sleep in `WM_CREATE` for non-measure mode, which accounts for most of `create_window_ms`. Removing it may improve latency further, but it appears intentional focus-stabilization code and should be changed only with explicit approval or a focused task.
+
+Next:
+
+- T072 remains blocked on user manual release-mode validation with the real hotkey.
+
+### 2026-05-06 22:05 — RSnip partial tasks closed from user validation
+
+Tasks:
+
+- T039 — Add native rMenu provider/actions for RSnip menu commands: done.
+- T040 — Coordinate RSnip hotkey ownership with rMenu daemon: done.
+- T041 — Update docs and manual validation for native RSnip integration: done.
+
+Evidence:
+
+- User confirmed RSnip command path has no PowerShell/CMD flash.
+- User confirmed RSnip hotkeys work.
+- User requested final public aliases be limited to `snip`, `rec`, and `ocr`; implementation and docs now match.
+
+Validation:
+
+- No new code validation for this checkpoint; it records prior implementation plus user manual validation.
+
+### 2026-05-06 22:15 — Performance UX accepted by user
+
+Task:
+
+- T072 — Release-mode performance validation and UX acceptance: done.
+
+Evidence:
+
+- User confirmed first daemon startup can still take time, which is acceptable as system-startup cost.
+- User confirmed subsequent hotkey opens happen effectively at the same time as pressing the shortcut.
+
+Validation already completed before acceptance:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test`: OK
+- `cargo build --release`: OK
+- Release daemon timing smoke: OK
+- Host-count smoke: OK
+
+Next:
+
+- Commit and push the performance instrumentation/optimization changes.

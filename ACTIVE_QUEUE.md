@@ -1,8 +1,8 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-06 20:35
-planned_at: 2026-05-06 05:35
+updated_at: 2026-05-06 22:15
+planned_at: 2026-05-06 21:00
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -81,6 +81,16 @@ Replanned 2026-05-06 05:35 from T052 after live registry bootstrap:
 - `calculator.rmod` is already published and present in the live registry; use it as the canonical real-module smoke item for T052/T054/T063.
 - Execute T052 next to automate registry regeneration, then proceed directly into rMenu core tasks T053-T060 so `/rmods` stops falling through to normal fuzzy search.
 - Keep GitHub/live validation separate from core unit tests; do not block local core implementation on Actions propagation if the workflow file is committed but remote Actions confirmation is delayed.
+
+
+
+Replanned 2026-05-06 21:00 after daemon open-latency analysis:
+
+- Direct `rmenu.exe --metrics` is fast enough for the current dataset: window visible/input ready in ~23ms and search p95 under 1ms.
+- The perceived 1-3s delay is therefore likely in the daemon hotkey/reopen path, especially embedded UI lifecycle, repeated module `onLoad`, external host lifecycle, companion discovery, or work done before `CreateWindowExW`.
+- Next wave focuses on measuring and then optimizing the daemon resident path before packaging.
+- Target UX: first visible input under 200ms, warm reopens under 100-200ms if feasible, with external module hosts and companion state kept hot.
+- Multiple registries remain future work and are blocked behind performance/resident UX work.
 
 ## Queue
 
@@ -1141,10 +1151,10 @@ Notes:
 
 ### T039 — Add native rMenu provider/actions for RSnip menu commands
 
-Status: partial
+Status: done
 Claimed by: current-agent
 Started: 2026-05-05 20:25
-Last update: 2026-05-05 20:35
+Last update: 2026-05-06 22:05
 Scope:
 - Replace transitional `.rmod` launch wrappers with native rMenu items/actions for RSnip companion commands.
 - Expose menu entries for:
@@ -1180,14 +1190,14 @@ Notes:
 - Ask before deleting `.rmod` files; disabling/cancelling transitional wrappers is safer than removal.
 - Implemented native built-in RSnip companion provider and disabled transitional `.rmod` wrappers.
 - Exact aliases (`snip`, `record`, `rec`, `screen`, `ocr`, `text`) now use `ctx.replaceItems` so stale history/cache entries cannot outrank native RSnip actions.
-- Next: manual interactive validation must confirm rMenu `snip`, `record`, and `ocr` trigger RSnip with no console flash.
+- User validated RSnip menu path: no PowerShell/CMD flash. Final public aliases are `snip`, `rec`, and `ocr` only.
 
 ### T040 — Coordinate RSnip hotkey ownership with rMenu daemon
 
-Status: partial
+Status: done
 Claimed by: current-agent
 Started: 2026-05-05 20:38
-Last update: 2026-05-05 20:45
+Last update: 2026-05-06 22:05
 Scope:
 - Decide and implement hotkey ownership for integrated mode.
 - Ensure `Ctrl+Shift+S`, `Ctrl+Shift+R`, and `Ctrl+Shift+E` remain fast.
@@ -1215,14 +1225,14 @@ Depends on:
 Notes:
 - Prefer minimal coordination first: rMenu starts RSnip daemon and lets RSnip own hotkeys, unless duplicate-registration evidence requires deeper changes.
 - Implemented lifecycle ownership: rMenu stops RSnip on quit only if rMenu started it; pre-existing standalone RSnip is left running.
-- Next: manual validation must confirm `Ctrl+Shift+S/R/E` remain fast and no duplicate hotkey failures appear in logs.
+- User validated `Ctrl+Shift+S/R/E` hotkeys remain fast and no console flash occurs in integrated use.
 
 ### T041 — Update docs and manual validation for native RSnip integration
 
-Status: pending
-Claimed by:
-Started:
-Last update:
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 22:05
+Last update: 2026-05-06 22:05
 Scope:
 - Update user-facing and migration docs to describe RSnip as an optional native companion app.
 - Document install/discovery expectations for dev and packaged setups.
@@ -1250,7 +1260,7 @@ Depends on:
 - T039
 - T040
 Notes:
-- This task should make future sessions understand why RSnip is not just another launcher target.
+- Completed in README, migration docs, DECISIONS, and `docs/companion-and-rmods-workflow.md`. RSnip is documented as a native companion, not a launcher target.
 
 ### T042 — Specify persistent rMenu data root and companion layout
 
@@ -2065,10 +2075,12 @@ Notes:
 
 ### T064 — Future: support multiple registries and conflict policy
 
-Status: pending
+Status: blocked
 Claimed by:
 Started:
-Last update:
+Last update: 2026-05-06 21:00
+Blocker:
+- Deferred until daemon/resident UI latency work is complete and the user asks for multi-registry support.
 Scope:
 - Add configurable registry URLs under rMenu config.
 - Merge modules from multiple registries.
@@ -2103,3 +2115,247 @@ Completed the companion/rMods finalization pass requested by the user:
 - Cleanup: removed generated dist artifacts, local installed module copies, obsolete transitional wrappers, installer artifacts, and generated codebase report from the rMenu worktree.
 - Docs: added `docs/companion-and-rmods-workflow.md` and updated README/API/authoring/operations/registry docs.
 - Validation: `cargo fmt --all`, `cargo check`, `cargo test` passed.
+
+### T066 — Instrument daemon hotkey-to-visible latency
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 21:05
+Last update: 2026-05-06 21:25
+Scope:
+- Add focused release-safe timing instrumentation for the daemon hotkey path.
+- Measure at least:
+  - hotkey received;
+  - before/after `show_warm_rmenu`;
+  - `run_ui_internal` setup before `CreateWindowExW`;
+  - module `run_on_load` duration;
+  - `update_matching_items_from_config` duration;
+  - window created/visible/first paint;
+  - close/hide/runtime handoff.
+- Keep instrumentation low-noise and useful in daemon logs or an explicit metrics/debug path.
+DoD:
+- Repeated daemon hotkey opens produce timings that identify where 1-3s are spent.
+- Metrics distinguish first/cold open from warm reopen.
+- Instrumentation does not materially slow normal launch.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- targeted/manual: start release daemon, press hotkey 3 times, inspect daemon log timings.
+Files likely touched:
+- `src/daemon_main.rs`
+- `src/ui_win32.rs`
+- `src/modules/mod.rs`
+- docs/operations note if a new debug flag/log format is added
+Risk: low
+Depends on:
+- none
+Notes:
+- Do this before optimizing; current `rmenu.exe --metrics` does not measure the resident daemon reopen path.
+- Implemented `run_ui_embedded_timed` and daemon hotkey timing logs.
+- Release smoke using `ctrl+alt+f12` showed window visible at ~63-66ms and first paint/input ready at ~65-70ms.
+- Total open duration in smoke was dominated by the scripted wait before closing the window, not pre-visible setup.
+
+### T067 — Avoid repeated module `onLoad` work on every daemon reopen
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 21:25
+Last update: 2026-05-06 21:25
+Scope:
+- Separate module runtime lifetime from UI session lifetime.
+- Ensure external module `onLoad` runs once per runtime load/reload, not every time the daemon opens the embedded UI.
+- Preserve per-open UI reset behavior: empty input, selection reset, stale runtime feedback cleared.
+- Keep module reload behavior correct after file changes or `/rmods` installs.
+DoD:
+- Reopening rMenu from the daemon does not call external `onLoad` again unless modules were reloaded.
+- `/rmods` install/update still reloads modules and runs the appropriate load path once.
+- `--modules-debug` still shows loaded hosts and healthy telemetry.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- Manual/log: repeated daemon opens show no repeated external host `onLoad` burst.
+Files likely touched:
+- `src/modules/mod.rs`
+- `src/ui_win32.rs`
+- `src/daemon_main.rs`
+- tests in `src/modules/mod.rs` or `src/ui_win32.rs`
+Risk: medium
+Depends on:
+- T066
+Notes:
+- Instrumentation showed module `run_on_load` and initial matching update at ~0-1ms on repeated daemon opens.
+- External module `onLoad` is tied to host startup, not every embedded UI reopen; no behavioral change was required for this task.
+
+### T068 — Keep external module hosts hot across daemon UI sessions
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 21:25
+Last update: 2026-05-06 21:25
+Scope:
+- Verify and enforce that `rmenu-module-host.exe`/Node workers remain alive across daemon opens.
+- Avoid fallback runtime recreation after normal UI close/hide.
+- Add tests or diagnostics for host lifecycle when `run_ui_embedded` returns control to daemon.
+DoD:
+- Repeated daemon opens do not spawn new module host/Node processes unless a module reload or host failure occurred.
+- Runtime handoff from UI back to daemon is explicit and covered by diagnostics/tests.
+- Host telemetry remains stable across open/close cycles.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- Manual: process count for `rmenu-module-host.exe`/`node.exe` stays stable across 5 hotkey opens.
+Files likely touched:
+- `src/daemon_main.rs`
+- `src/ui_win32.rs`
+- `src/modules/host_client.rs`
+- `src/modules/mod.rs`
+Risk: medium
+Depends on:
+- T066
+- T067
+Notes:
+- Host-count smoke showed `rmenu-module-host.exe` count stabilized at 4 after first open and stayed 4 across repeated opens.
+- Node process count also stayed stable across repeated opens in the smoke run.
+- No behavioral change was required for this task.
+
+### T069 — Cache companion discovery in the daemon/runtime hot path
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 21:30
+Last update: 2026-05-06 21:45
+Scope:
+- Avoid repeated filesystem/PATH discovery for RSnip and RTasks during normal queries and warm UI opens.
+- Introduce daemon/runtime-scoped availability cache or TTL where appropriate.
+- Preserve explicit install/update behavior: `/install rsnip`, `/install rtasks`, and daemon startup must refresh companion state.
+DoD:
+- RSnip/RTasks provider availability checks do not scan PATH/filesystem repeatedly on every query/open.
+- Installing a companion updates or invalidates the cached state.
+- Missing/unavailable companion feedback remains correct.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- Manual/log: repeated opens and `snip`/`tasks` queries show cached discovery path.
+Files likely touched:
+- `src/rsnip_companion.rs`
+- `src/rtasks_companion.rs`
+- `src/modules/mod.rs`
+- `src/daemon_main.rs`
+- tests for discovery/cache invalidation if practical
+Risk: medium
+Depends on:
+- T066
+Notes:
+- Useful if instrumentation shows discovery contributes to warm-open delay.
+- Added 5s in-process cached path discovery for RSnip and RTasks.
+- Companion install flows update the cache to the newly installed managed path.
+
+### T070 — Defer noncritical module/provider work until after input is visible
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 21:45
+Last update: 2026-05-06 22:00
+Scope:
+- Ensure the daemon can show an empty input bar before provider/decorator work that is not required for the initial empty state.
+- Keep empty input as input-bar-only with no precomputed module list.
+- Move any expensive query/decorate work to after first paint or to actual input changes.
+DoD:
+- Hotkey open shows input promptly even when providers/modules are installed.
+- Typing still triggers normal provider/query behavior with correct ranking/decorations.
+- No stale items appear on empty input.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- Manual: daemon hotkey opens to visible input before module/provider results are needed.
+Files likely touched:
+- `src/ui_win32.rs`
+- `src/modules/mod.rs`
+- `src/ranking.rs` if query update behavior needs adjustment
+Risk: medium
+Depends on:
+- T066
+- T067
+Notes:
+- This is distinct from resident-window work; it removes pre-visible synchronous work.
+- Empty initial input now skips initial provider/query/decorator work and clears the list directly before first visible paint.
+- Timing smoke still shows first paint/input ready around 63-69ms; remaining pre-visible time is mostly `CreateWindowExW`/`WM_CREATE` work.
+
+### T071 — Convert daemon embedded UI to resident show/hide window if needed
+
+Status: cancelled
+Claimed by: current-agent
+Started: 2026-05-06 22:00
+Last update: 2026-05-06 22:00
+Scope:
+- If T066-T070 do not reach target latency, replace create/destroy per hotkey with a resident hidden window owned by the daemon.
+- Hotkey should reset input/selection and `ShowWindow`/focus the existing HWND.
+- Close/Escape/Enter in daemon mode should hide the window and return to the daemon loop, not destroy the UI runtime.
+- Preserve normal `rmenu.exe` standalone behavior.
+DoD:
+- Warm daemon reopen avoids `CreateWindowExW` on every hotkey.
+- Standalone CLI/window mode still exits normally.
+- Module runtime and external hosts remain alive across hide/show.
+- Focus and keyboard behavior remain correct.
+Validation:
+- `cargo fmt --all`
+- `cargo check`
+- `cargo test`
+- Manual: 10 daemon hotkey open/close cycles, no stuck focus, no duplicate windows, no host respawn.
+Files likely touched:
+- `src/daemon_main.rs`
+- `src/ui_win32.rs`
+- `src/app_state.rs`
+- `src/modules/mod.rs`
+Risk: high
+Depends on:
+- T066
+- T067
+- T068
+- T070
+Notes:
+- This is the largest optimization and should only be implemented after measurement proves it is needed.
+- Cancelled for now because instrumentation shows warm opens visible/painted around 63ms in controlled release smoke, below the 100-200ms target.
+- User validated real shortcut behavior: first startup can take time, warm opens are effectively instant.
+
+### T072 — Release-mode performance validation and UX acceptance
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-06 22:15
+Last update: 2026-05-06 22:15
+Blocker:
+- Resolved by user manual validation: warm daemon opens now feel instantaneous after first startup.
+Scope:
+- Validate release daemon warm-open latency and subjective feel.
+- Compare before/after metrics/logs.
+- Validate aliases and key paths still work:
+  - `snip`, `rec`, `ocr`;
+  - `tasks`;
+  - `t ` embedded task creation;
+  - `/rmods` open/filter/install/update;
+  - `color` rpack.
+DoD:
+- User confirmed hotkey opens feel instantaneous after first startup.
+- Warm-open timing target is met or remaining bottleneck is documented.
+- No regression in companion/rMods workflows.
+Validation:
+- `cargo build --release`
+- manual: daemon hotkey repeated open/close latency check: OK by user validation.
+- manual: companion/rMods smoke list above.
+Files likely touched:
+- `STATE.md`
+- maybe docs if final measured targets are recorded
+Risk: low
+Depends on:
+- T067
+- T068
+- T069
+- T070
+- T071
+Notes:
+- Packaging/release remains out of scope until user asks.

@@ -62,6 +62,7 @@ static APP_STATE: Mutex<Option<AppState>> = Mutex::new(None);
 static CONFIG: Mutex<Option<RmenuConfig>> = Mutex::new(None);
 static MODULE_RUNTIME: Mutex<Option<ModuleRuntime>> = Mutex::new(None);
 static UI_MEASURE_STATE: Mutex<UiMeasureState> = Mutex::new(UiMeasureState::disabled());
+static UI_RUN_TIMING_TRACE: Mutex<Option<UiRunTimingTrace>> = Mutex::new(None);
 static UI_EMBEDDED_MODE: AtomicBool = AtomicBool::new(false);
 static UI_EXIT_CODE: AtomicI32 = AtomicI32::new(0);
 static SUPPRESS_NEXT_RMODS_SPACE_CHAR: AtomicBool = AtomicBool::new(false);
@@ -75,6 +76,27 @@ pub struct UiLatencyMetrics {
     pub time_to_window_visible_ms: u128,
     pub time_to_first_paint_ms: u128,
     pub time_to_input_ready_ms: u128,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UiRunTimings {
+    pub pre_window_setup_ms: u128,
+    pub module_on_load_ms: u128,
+    pub initial_matching_update_ms: u128,
+    pub register_class_ms: u128,
+    pub create_window_ms: u128,
+    pub time_to_window_visible_ms: u128,
+    pub time_to_first_paint_ms: u128,
+    pub time_to_input_ready_ms: u128,
+    pub message_loop_ms: u128,
+    pub total_ms: u128,
+}
+
+#[derive(Debug)]
+struct UiRunTimingTrace {
+    started_at: Instant,
+    time_to_first_paint_ms: Option<u128>,
+    time_to_input_ready_ms: Option<u128>,
 }
 
 #[derive(Debug)]
@@ -120,20 +142,31 @@ fn mark_window_visible_metric() {
 }
 
 fn mark_first_paint_and_input_ready_metrics() {
-    let mut state = UI_MEASURE_STATE.lock().unwrap();
-    if !state.enabled {
-        return;
-    }
-    let Some(started_at) = state.started_at else {
-        return;
-    };
-    let elapsed_ms = started_at.elapsed().as_millis();
+    {
+        let mut state = UI_MEASURE_STATE.lock().unwrap();
+        if state.enabled {
+            if let Some(started_at) = state.started_at {
+                let elapsed_ms = started_at.elapsed().as_millis();
 
-    if state.time_to_first_paint_ms.is_none() {
-        state.time_to_first_paint_ms = Some(elapsed_ms);
+                if state.time_to_first_paint_ms.is_none() {
+                    state.time_to_first_paint_ms = Some(elapsed_ms);
+                }
+                if state.time_to_input_ready_ms.is_none() {
+                    state.time_to_input_ready_ms = Some(elapsed_ms);
+                }
+            }
+        }
     }
-    if state.time_to_input_ready_ms.is_none() {
-        state.time_to_input_ready_ms = Some(elapsed_ms);
+
+    let mut trace = UI_RUN_TIMING_TRACE.lock().unwrap();
+    if let Some(trace) = trace.as_mut() {
+        let elapsed_ms = trace.started_at.elapsed().as_millis();
+        if trace.time_to_first_paint_ms.is_none() {
+            trace.time_to_first_paint_ms = Some(elapsed_ms);
+        }
+        if trace.time_to_input_ready_ms.is_none() {
+            trace.time_to_input_ready_ms = Some(elapsed_ms);
+        }
     }
 }
 
@@ -1295,8 +1328,8 @@ unsafe extern "system" fn window_proc(
             }
             EndPaint(hwnd, &ps);
 
+            mark_first_paint_and_input_ready_metrics();
             if is_measure_mode_enabled() {
-                mark_first_paint_and_input_ready_metrics();
                 request_ui_exit(hwnd, 0);
             }
 
@@ -1769,6 +1802,30 @@ unsafe extern "system" fn window_proc(
     }
 }
 
+fn finish_ui_run_timing(
+    timings: Option<&mut UiRunTimings>,
+    run_started_at: Instant,
+    message_loop_started_at: Option<Instant>,
+) {
+    let Some(timings) = timings else {
+        let mut trace_guard = UI_RUN_TIMING_TRACE.lock().unwrap();
+        *trace_guard = None;
+        return;
+    };
+
+    if let Some(loop_started_at) = message_loop_started_at {
+        timings.message_loop_ms = loop_started_at.elapsed().as_millis();
+    }
+    timings.total_ms = run_started_at.elapsed().as_millis();
+
+    let mut trace_guard = UI_RUN_TIMING_TRACE.lock().unwrap();
+    if let Some(trace) = trace_guard.as_ref() {
+        timings.time_to_first_paint_ms = trace.time_to_first_paint_ms.unwrap_or(0);
+        timings.time_to_input_ready_ms = trace.time_to_input_ready_ms.unwrap_or(0);
+    }
+    *trace_guard = None;
+}
+
 fn run_ui_internal(
     cmd_options: &CmdOptions,
     config: &RmenuConfig,
@@ -1776,7 +1833,18 @@ fn run_ui_internal(
     mut module_runtime: ModuleRuntime,
     measure_mode: bool,
     embedded_mode: bool,
+    mut run_timings: Option<&mut UiRunTimings>,
 ) -> windows::core::Result<i32> {
+    let run_started_at = Instant::now();
+    if run_timings.is_some() {
+        let mut trace_guard = UI_RUN_TIMING_TRACE.lock().unwrap();
+        *trace_guard = Some(UiRunTimingTrace {
+            started_at: run_started_at,
+            time_to_first_paint_ms: None,
+            time_to_input_ready_ms: None,
+        });
+    }
+
     UI_EMBEDDED_MODE.store(embedded_mode, Ordering::SeqCst);
     UI_EXIT_CODE.store(0, Ordering::SeqCst);
     {
@@ -1791,13 +1859,31 @@ fn run_ui_internal(
     {
         let mut app_state_guard = APP_STATE.lock().unwrap();
         if let Some(app_state) = app_state_guard.as_mut() {
+            let on_load_started_at = Instant::now();
             module_runtime.run_on_load(app_state);
-            update_matching_items_from_config(app_state);
+            if let Some(timings) = run_timings.as_deref_mut() {
+                timings.module_on_load_ms = on_load_started_at.elapsed().as_millis();
+            }
+
+            let matching_started_at = Instant::now();
+            if app_state.current_input.trim().is_empty() {
+                app_state.matching_items.clear();
+                app_state.selected_index = 0;
+                app_state.scroll_offset = 0;
+            } else {
+                update_matching_items_from_config(app_state);
+            }
+            if let Some(timings) = run_timings.as_deref_mut() {
+                timings.initial_matching_update_ms = matching_started_at.elapsed().as_millis();
+            }
         }
     }
     {
         let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
         *runtime_guard = Some(module_runtime);
+    }
+    if let Some(timings) = run_timings.as_deref_mut() {
+        timings.pre_window_setup_ms = run_started_at.elapsed().as_millis();
     }
     {
         let mut measure_guard = UI_MEASURE_STATE.lock().unwrap();
@@ -1812,6 +1898,7 @@ fn run_ui_internal(
         let class_name_w = to_wstring("rmenu_class_layout");
         let window_title_w = to_wstring("rMenu");
 
+        let register_started_at = Instant::now();
         let wc = WNDCLASSW {
             style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(window_proc),
@@ -1821,6 +1908,9 @@ fn run_ui_internal(
             ..Default::default()
         };
         RegisterClassW(&wc);
+        if let Some(timings) = run_timings.as_deref_mut() {
+            timings.register_class_ms = register_started_at.elapsed().as_millis();
+        }
 
         let num_items_for_geom = {
             let app_state_guard = APP_STATE.lock().unwrap();
@@ -1837,6 +1927,7 @@ fn run_ui_internal(
             WINDOW_EX_STYLE(WS_EX_TOPMOST.0 | WS_EX_TOOLWINDOW.0 | WS_EX_APPWINDOW.0)
         };
 
+        let create_window_started_at = Instant::now();
         let hwnd = CreateWindowExW(
             ex_style,
             PCWSTR(class_name_w.as_ptr()),
@@ -1852,26 +1943,41 @@ fn run_ui_internal(
             None,
         );
 
+        if let Some(timings) = run_timings.as_deref_mut() {
+            timings.create_window_ms = create_window_started_at.elapsed().as_millis();
+        }
+
         if hwnd.0 == 0 {
             if !cmd_options.silent {
                 eprintln!("Error creating window");
             }
+            finish_ui_run_timing(run_timings.as_deref_mut(), run_started_at, None);
             return Ok(0);
         }
 
         ShowWindow(hwnd, SW_SHOW);
+        if let Some(timings) = run_timings.as_deref_mut() {
+            timings.time_to_window_visible_ms = run_started_at.elapsed().as_millis();
+        }
         mark_window_visible_metric();
         if !measure_mode {
             SetForegroundWindow(hwnd);
         }
         InvalidateRect(hwnd, None, true);
 
+        let message_loop_started_at = Instant::now();
         let mut msg = MSG::default();
         loop {
             match PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
                 BOOL(0) => {
                     if embedded_mode && IsWindow(hwnd).0 == 0 {
-                        return Ok(current_ui_exit_code());
+                        let exit_code = current_ui_exit_code();
+                        finish_ui_run_timing(
+                            run_timings.as_deref_mut(),
+                            run_started_at,
+                            Some(message_loop_started_at),
+                        );
+                        return Ok(exit_code);
                     }
 
                     let mut should_repaint = false;
@@ -1897,12 +2003,24 @@ fn run_ui_internal(
                 }
                 _ => {
                     if msg.message == WM_QUIT {
-                        return Ok(msg.wParam.0 as i32);
+                        let exit_code = msg.wParam.0 as i32;
+                        finish_ui_run_timing(
+                            run_timings.as_deref_mut(),
+                            run_started_at,
+                            Some(message_loop_started_at),
+                        );
+                        return Ok(exit_code);
                     }
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
                     if embedded_mode && IsWindow(hwnd).0 == 0 {
-                        return Ok(current_ui_exit_code());
+                        let exit_code = current_ui_exit_code();
+                        finish_ui_run_timing(
+                            run_timings.as_deref_mut(),
+                            run_started_at,
+                            Some(message_loop_started_at),
+                        );
+                        return Ok(exit_code);
                     }
                 }
             }
@@ -1923,6 +2041,7 @@ pub fn run_ui(
         module_runtime,
         false,
         false,
+        None,
     )
 }
 
@@ -1940,7 +2059,28 @@ pub fn run_ui_embedded(
         module_runtime,
         false,
         true,
+        None,
     )
+}
+
+#[allow(dead_code)]
+pub fn run_ui_embedded_timed(
+    cmd_options: &CmdOptions,
+    config: &RmenuConfig,
+    initial_app_state: AppState,
+    module_runtime: ModuleRuntime,
+) -> windows::core::Result<(i32, UiRunTimings)> {
+    let mut timings = UiRunTimings::default();
+    let exit_code = run_ui_internal(
+        cmd_options,
+        config,
+        initial_app_state,
+        module_runtime,
+        false,
+        true,
+        Some(&mut timings),
+    )?;
+    Ok((exit_code, timings))
 }
 
 #[allow(dead_code)]
@@ -1962,6 +2102,7 @@ pub fn measure_ui_latencies(
         module_runtime,
         true,
         false,
+        None,
     )?;
 
     let mut measure_guard = UI_MEASURE_STATE.lock().unwrap();
