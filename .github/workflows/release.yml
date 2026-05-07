@@ -33,6 +33,10 @@ jobs:
       - name: Build release
         run: cargo build --release
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
       - name: Compute package metadata
         id: meta
         shell: pwsh
@@ -53,7 +57,9 @@ jobs:
           New-Item -ItemType Directory -Force (Join-Path $stage "module-examples") | Out-Null
 
           Copy-Item "target\release\rmenu.exe" $stage
+          Copy-Item "target\release\rmenu-daemon.exe" $stage
           Copy-Item "target\release\rmenu-module-host.exe" $stage
+          Copy-Item "target\release\rmenu-updater.exe" $stage
           Copy-Item "config_example.ini" $stage
 
           $docs = @(
@@ -77,6 +83,17 @@ jobs:
             if (Test-Path $doc) {
               Copy-Item $doc $stage
             }
+          }
+
+          New-Item -ItemType Directory -Force (Join-Path $stage "docs") | Out-Null
+          if (Test-Path "docs\companion-and-rmods-workflow.md") {
+            Copy-Item "docs\companion-and-rmods-workflow.md" (Join-Path $stage "docs\companion-and-rmods-workflow.md")
+          }
+          if (Test-Path "docs\rmods-registry.md") {
+            Copy-Item "docs\rmods-registry.md" (Join-Path $stage "docs\rmods-registry.md")
+          }
+          if (Test-Path "docs\update-workflow.md") {
+            Copy-Item "docs\update-workflow.md" (Join-Path $stage "docs\update-workflow.md")
           }
 
           if (Test-Path "modules\calculator.rmod") {
@@ -115,13 +132,24 @@ jobs:
           if (Test-Path $zipPath) { Remove-Item $zipPath }
           Compress-Archive -Path (Join-Path "dist" $packageName) -DestinationPath $zipPath
 
+      - name: Build installer artifact
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File installer\build-installer.ps1 -Version "${{ steps.meta.outputs.version }}" -SkipBuild -Force
+
       - name: Generate release checksums
         shell: pwsh
         run: |
           $packageName = "${{ steps.meta.outputs.package_name }}"
+          $version = "${{ steps.meta.outputs.version }}"
           $zipPath = Join-Path "dist" "$packageName.zip"
-          $hash = Get-FileHash $zipPath -Algorithm SHA256
-          "$($hash.Hash)  $packageName.zip" | Set-Content -Path (Join-Path "dist" "SHA256SUMS.txt") -Encoding utf8
+          $installerPath = Join-Path "dist" "installers\rmenu-setup-v$version.exe"
+          $lines = New-Object System.Collections.Generic.List[string]
+          $zipHash = Get-FileHash $zipPath -Algorithm SHA256
+          $lines.Add("$($zipHash.Hash)  $packageName.zip")
+          $installerHash = Get-FileHash $installerPath -Algorithm SHA256
+          $lines.Add("$($installerHash.Hash)  installers/rmenu-setup-v$version.exe")
+          $lines | Set-Content -Path (Join-Path "dist" "SHA256SUMS.txt") -Encoding utf8
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -129,6 +157,7 @@ jobs:
           name: ${{ steps.meta.outputs.package_name }}
           path: |
             dist/${{ steps.meta.outputs.package_name }}.zip
+            dist/installers/rmenu-setup-v${{ steps.meta.outputs.version }}.exe
             dist/SHA256SUMS.txt
           if-no-files-found: error
 

@@ -1,7 +1,7 @@
 # INSTALL — rmenu
 
 Status: active  
-Install method for current release line: Windows x64 zip
+Install methods for current release line: Windows x64 zip and Windows installer
 
 ---
 
@@ -11,7 +11,7 @@ Install method for current release line: Windows x64 zip
 - A terminal such as PowerShell.
 - Optional: a folder on your `PATH` for launching `rmenu.exe` from anywhere.
 
-`rmenu` is currently distributed as an unsigned zip artifact with SHA256 checksums.
+`rmenu` is currently distributed as unsigned Windows artifacts with SHA256 checksums.
 
 ---
 
@@ -23,22 +23,24 @@ Download the latest Windows x64 zip from:
 https://github.com/SynrgStudio/rmenu/releases
 ```
 
-Expected artifact name:
+Expected artifact names:
 
 ```text
 rmenu-v<VERSION>-windows-x64.zip
+rmenu-setup-v<VERSION>.exe
 ```
 
 ---
 
 ## 3. Verify checksum
 
-If the release provides `checksums.txt`, verify the downloaded zip before extracting it.
+If the release provides `SHA256SUMS.txt`, verify the downloaded zip or installer before using it.
 
 PowerShell example:
 
 ```powershell
 Get-FileHash .\rmenu-v<VERSION>-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\rmenu-setup-v<VERSION>.exe -Algorithm SHA256
 ```
 
 Compare the hash with the published checksum.
@@ -66,6 +68,7 @@ Depending on the zip layout, binaries should be available under a versioned fold
 
 ```text
 %LOCALAPPDATA%\rmenu\rmenu-v<VERSION>-windows-x64\rmenu.exe
+%LOCALAPPDATA%\rmenu\rmenu-v<VERSION>-windows-x64\rmenu-daemon.exe
 %LOCALAPPDATA%\rmenu\rmenu-v<VERSION>-windows-x64\rmenu-module-host.exe
 ```
 
@@ -77,7 +80,27 @@ C:\Tools\rmenu
 
 ---
 
-## 5. Add to PATH
+## 5. Install with Windows installer
+
+When available, `rmenu-setup-v<VERSION>.exe` installs the binaries under:
+
+```text
+C:\Program Files\rMenu
+```
+
+The installer asks where to store the reusable data root. The default is:
+
+```text
+C:\rMenuData
+```
+
+The chosen data folder stores modules, companions, config, and state. It is saved for future upgrades and is intentionally preserved on uninstall.
+
+The installer creates Start Menu shortcuts. `Start rMenu daemon when Windows starts` is enabled by default because rMenu is intended to be a resident launcher. The installer can also launch the daemon after install. When the daemon is running, rMenu shows a system tray icon; double-click opens rMenu, right-click opens a menu with Open and Quit. Uninstall removes app binaries and startup registration, but intentionally preserves the selected data root so installed modules, companions, config, and state can be reused by future installs.
+
+---
+
+## 6. Add to PATH
 
 To run `rmenu.exe` from anywhere, add the extracted folder containing `rmenu.exe` to your user `PATH`.
 
@@ -100,7 +123,7 @@ rmenu.exe --metrics
 
 ---
 
-## 6. Configuration
+## 7. Configuration
 
 Default config path:
 
@@ -120,9 +143,27 @@ Use it as a reference for colors, layout, launcher sources, behavior, and module
 
 ---
 
-## 7. Modules
+## 8. Modules and data root
 
-`rmenu` loads external modules from a `modules/` directory relative to the current working directory.
+The default Windows data root is:
+
+```text
+C:\rMenuData
+```
+
+By default, installed modules live under:
+
+```text
+C:\rMenuData\modules
+```
+
+Module/user state lives under:
+
+```text
+C:\rMenuData\state
+```
+
+Use `/rmods` in rMenu to install registry packages into the data root. Existing `--modules-dir` and `RMENU_MODULES_DIR` overrides remain available for development and debugging.
 
 The release artifact may include examples under:
 
@@ -130,13 +171,13 @@ The release artifact may include examples under:
 module-examples/
 ```
 
-Examples are not active by default. To enable one, copy it into a `modules/` directory next to where you run `rmenu.exe`, or into the working directory from which you launch `rmenu`.
+Examples are not active by default. To enable one manually, copy it into the data-root modules directory.
 
 Example:
 
 ```powershell
-New-Item -ItemType Directory -Force .\modules | Out-Null
-Copy-Item .\module-examples\calculator.rmod .\modules\calculator.rmod
+New-Item -ItemType Directory -Force C:\rMenuData\modules | Out-Null
+Copy-Item .\module-examples\calculator.rmod C:\rMenuData\modules\calculator.rmod
 rmenu.exe --modules-debug
 ```
 
@@ -144,17 +185,23 @@ Shortcut examples are intentionally packaged as examples, not active defaults, b
 
 ---
 
-## 8. Manual update
+## 9. Updates
 
-There is no auto-updater in the current release line.
+rMenu can show a non-intrusive startup update notice when cached GitHub Release metadata says a newer version is available:
 
-To update manually:
+- `Enter`: starts `rmenu-updater.exe` with the cached installer/checksum URLs;
+- `Ctrl+Enter`: opens the GitHub Release changelog;
+- any other key: dismisses the notice for the current rMenu open only.
+
+The updater downloads the installer and `SHA256SUMS.txt` under `<data_dir>\state\updates\downloads\`, verifies SHA256, requests daemon shutdown, runs the verified installer, and logs to `<data_dir>\state\updates\updater.log`.
+
+Manual update remains supported:
 
 1. Download the newer zip.
 2. Verify checksum.
 3. Extract it to a new versioned folder.
 4. Update your `PATH` if needed.
-5. Copy any user modules/config you intentionally keep.
+5. Keep using the existing `C:\rMenuData` data root; do not copy package files into it unless you are manually managing modules.
 6. Run smoke checks:
 
 ```powershell
@@ -170,7 +217,7 @@ rmenu.exe --modules-debug
 
 ---
 
-## 9. Future install options
+## 10. Future install options
 
 Planned or possible future distribution channels:
 
@@ -181,6 +228,6 @@ Planned or possible future distribution channels:
 Not planned for Wave 0:
 
 - MSI installer;
-- automatic updater.
+- fully automatic/background updates.
 
-Those can be reconsidered after the zip release flow is reliable.
+Those can be reconsidered after the installer and updater flow is reliable.

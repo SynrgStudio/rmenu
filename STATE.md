@@ -1,7 +1,7 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-07 01:15
+updated_at: 2026-05-07 06:50
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -1783,3 +1783,576 @@ Validation:
 Remaining:
 
 - User manual validation: `Alt+RButton` should reopen the last closed tab without opening the context menu.
+
+### 2026-05-07 01:35 — plan-cont release/installer/updater replan
+
+Context:
+
+- User accepted resident helper behavior after TaskbarVolume and ThoriumTabs fixes.
+- User accepted `/rmods` status color behavior and requested commit/push; `d8ebab4 feat: color rmods install status badges` is on `origin/main`.
+- Repos were clean before this planning update.
+- Next topic: releases, installers, and a future non-intrusive GitHub Releases updater.
+
+Queue changes:
+
+- Marked T080 done from user/manual acceptance.
+- Added T081-T086 for `0.3.0` release scope, portable zip, Inno Setup installer MVP, installer release artifacts, manual installer smoke, and final GitHub Release publication.
+- Added T087-T093 for updater spec, GitHub release check/cache, startup update notice UI, separate `rmenu-updater.exe`, Enter-to-install wiring, updater docs, and manual updater validation.
+
+Validation:
+
+- Planning-only change; no code validation required.
+
+Next:
+
+- `/start-cont` beginning with T081.
+
+### 2026-05-07 01:45 — T081 claimed
+
+Task:
+
+- T081 — Define v0.3.0 release scope and changelog: in progress.
+
+Scope:
+
+- Prepare changelog/release scope for v0.3.0.
+- Keep version bump/publish for later release task.
+
+Validation planned:
+
+- `git diff --check`.
+
+### 2026-05-07 01:55 — T081 done, T082 claimed
+
+Tasks:
+
+- T081 — Define v0.3.0 release scope and changelog: done.
+- T082 — Fix portable zip packaging for current runtime architecture: claimed.
+
+Files changed for T081:
+
+- `CHANGELOG.md`
+- `RELEASE_CHECKLIST.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `git diff --check`: OK
+
+Release/version decision:
+
+- Target release line: `0.3.0`.
+- `Cargo.toml` version bump is deferred to the final release script/task, not planning/docs work.
+- Auto-updater install is out of initial release scope unless updater tasks are completed and accepted.
+
+Next:
+
+- Update portable zip packaging to include `rmenu-daemon.exe` and current docs.
+
+### 2026-05-07 02:15 — T082 done, T083 claimed
+
+Tasks:
+
+- T082 — Fix portable zip packaging for current runtime architecture: done.
+- T083 — Add Windows installer MVP with Inno Setup: claimed.
+
+Files changed for T082:
+
+- `scripts/release-local.ps1`
+- `.github/workflows/release.yml`
+- `RELEASE_CHECKLIST.md`
+- `INSTALL.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo test`: OK
+- `cargo check`: OK
+- `cargo build --release`: OK
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -SkipValidation`: OK
+- Zip inspection confirmed these files exist:
+  - `rmenu.exe`;
+  - `rmenu-daemon.exe`;
+  - `rmenu-module-host.exe`;
+  - `docs/companion-and-rmods-workflow.md`;
+  - `docs/rmods-registry.md`.
+- `git diff --check`: OK
+
+Notes:
+
+- Package-only mode now uses the requested package name version without modifying `Cargo.toml`; actual version bump remains a release task.
+- Generated `dist/` artifacts were removed after validation and are not committed.
+
+Next:
+
+- Add Inno Setup installer MVP.
+
+### 2026-05-07 02:35 — T083 done, T084 claimed
+
+Tasks:
+
+- T083 — Add Windows installer MVP with Inno Setup: done.
+- T084 — Add installer artifact and checksums to release workflow: claimed.
+
+Files changed for T083:
+
+- `installer/rmenu.iss`
+- `installer/build-installer.ps1`
+- `INSTALL.md`
+- `RELEASE_CHECKLIST.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `cargo build --release`: OK
+- `powershell -NoProfile -ExecutionPolicy Bypass -File installer/build-installer.ps1 -Version 0.3.0 -SkipBuild -Force`: OK
+- Built installer existed at `dist\installers\rmenu-setup-v0.3.0.exe` with size `2953178` bytes.
+- `git diff --check`: OK
+
+Notes:
+
+- Inno Setup compiler found at `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`.
+- Generated `dist/` artifacts were removed after validation and are not committed.
+
+Next:
+
+- Include installer artifact/checksum in local and workflow release packaging.
+
+### 2026-05-07 03:00 — T084 done, T087 claimed
+
+Tasks:
+
+- T084 — Add installer artifact and checksums to release workflow: done.
+- T087 — Specify update checker and startup prompt UX: claimed.
+
+Files changed for T084:
+
+- `scripts/release-local.ps1`
+- `.github/workflows/release.yml`
+- `RELEASE_CHECKLIST.md`
+- `INSTALL.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -SkipValidation -IncludeInstaller`: OK
+- `dist\SHA256SUMS.txt` included:
+  - `rmenu-v0.3.0-windows-x64.zip`;
+  - `installers/rmenu-setup-v0.3.0.exe`.
+- Artifact existence/size confirmed:
+  - zip: `1744360` bytes;
+  - installer: `2953187` bytes.
+- Workflow review: `.github/workflows/release.yml` now installs Inno Setup, builds installer, checksums both artifacts, and uploads both artifacts.
+- `git diff --check`: OK
+
+Notes:
+
+- Generated `dist/` artifacts were removed after validation and are not committed.
+
+Next:
+
+- Specify updater UX/security contract before implementation.
+
+### 2026-05-07 03:15 — T087 done, T088 claimed
+
+Tasks:
+
+- T087 — Specify update checker and startup prompt UX: done.
+- T088 — Implement GitHub release update check and cache: claimed.
+
+Files changed for T087:
+
+- `docs/update-workflow.md`
+- `DECISIONS.md`
+- `README.md`
+- `INSTALL.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `git diff --check`: OK
+
+Next:
+
+- Implement GitHub release metadata parsing and cache without blocking hot rMenu opens.
+
+### 2026-05-07 03:35 — T088 done, T089 claimed
+
+Tasks:
+
+- T088 — Implement GitHub release update check and cache: done.
+- T089 — Add non-intrusive startup update notice UI: claimed.
+
+Files changed for T088:
+
+- `src/update_check.rs`
+- `src/main.rs`
+- `src/daemon_main.rs`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo test update_check`: OK
+- `cargo check`: OK
+
+Notes:
+
+- Update checker supports GitHub latest release response shape, file URL fixture fetch, Windows HTTP fetch via URLDownloadToFileW, numeric version comparison, and `<data_dir>\state\updates.json` cache read/write.
+- It is not called by the hot launcher open path yet, so update failures cannot block rMenu opening.
+
+Next:
+
+- Render startup notice from cached update metadata and implement key behavior.
+
+### 2026-05-07 04:00 — T089 done checkpoint
+
+Task:
+
+- T089 — Add non-intrusive startup update notice UI: done.
+
+Files changed for T089:
+
+- `src/app_state.rs`
+- `src/main.rs`
+- `src/daemon_main.rs`
+- `src/ui_win32.rs`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo test startup_update_notice`: OK
+- `cargo check`: OK
+- `cargo test`: OK
+- `npm run check`: skipped; no `package.json`.
+- Fake cached update smoke with `target/debug/rmenu.exe --data-dir <temp> --metrics`: OK
+- `git diff --check`: OK
+
+Behavior:
+
+- rMenu reads cached update metadata from `<data_dir>\state\updates.json`.
+- If cached latest version is newer than `CARGO_PKG_VERSION`, first open shows a startup update notice.
+- `Ctrl+Enter` opens the release/changelog URL.
+- `Enter` attempts to launch `rmenu-updater.exe install ...`; if updater is not present yet, the error is recoverable feedback.
+- Any other key dismisses the notice for the current open.
+
+Next:
+
+- T090 — Add `rmenu-updater.exe` install helper.
+
+### 2026-05-07 04:10 — installer data-root/startup UX correction
+
+User feedback:
+
+- Installer must ask where to put the data folder for modules/config/state.
+- Running at Windows startup is essential because rMenu is intended as a resident launcher.
+
+Changes:
+
+- Updated `installer/rmenu.iss`:
+  - added custom data folder page;
+  - default data folder is `C:\rMenuData`;
+  - previous choice is read from `HKCU\Software\SynrgStudio\rMenu\DataDir`;
+  - chosen data folder is saved back to that registry value;
+  - data subfolders are created under the chosen path;
+  - daemon startup and launch-after-install use the chosen `--data-dir`;
+  - startup task is checked by default;
+  - launch daemon after install is checked by default.
+- Updated `INSTALL.md` and `RELEASE_CHECKLIST.md` to reflect data-folder choice and startup default.
+
+Validation:
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File installer/build-installer.ps1 -Version 0.3.0 -SkipBuild -Force`: OK
+- `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -SkipValidation -IncludeInstaller`: OK
+- `git diff --check`: OK
+
+Notes:
+
+- Generated `dist/` artifacts were removed after validation and are not committed.
+
+### 2026-05-07 04:18 — final package build ready for installer smoke
+
+Validation run:
+
+- `scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -IncludeInstaller`: OK
+  - ran `cargo fmt`
+  - ran `cargo test`: OK
+  - ran `cargo check`: OK
+  - ran `cargo build --release`: OK
+  - built Inno Setup installer: OK
+
+Artifacts generated:
+
+- `dist\rmenu-v0.3.0-windows-x64.zip`
+- `dist\installers\rmenu-setup-v0.3.0.exe`
+- `dist\SHA256SUMS.txt`
+
+Artifact inspection:
+
+- Zip contains `rmenu.exe`, `rmenu-daemon.exe`, and `rmenu-module-host.exe`.
+- `SHA256SUMS.txt` contains entries for portable zip and installer.
+
+Next:
+
+- T085 manual installer smoke validation can start using `dist\installers\rmenu-setup-v0.3.0.exe`.
+
+### 2026-05-07 04:25 — T090 claimed
+
+Task:
+
+- T090 — Add `rmenu-updater.exe` install helper: in_progress.
+
+Scope:
+
+- Add separate updater binary capable of downloading installer/checksum assets, verifying SHA256, asking daemon to quit, and running installer.
+- Automated validation must use local/file fixtures and must not run a real installer.
+
+### 2026-05-07 04:55 — T090/T091 done, T092 claimed
+
+Tasks:
+
+- T090 — Add `rmenu-updater.exe` install helper: done.
+- T091 — Wire update prompt Enter action to updater: done.
+- T092 — Document updater operations and troubleshooting: in_progress.
+
+Files changed:
+
+- `Cargo.toml`
+- `src/updater_main.rs`
+- `src/app_state.rs`
+- `src/main.rs`
+- `src/daemon_main.rs`
+- `src/ui_win32.rs`
+- `scripts/release-local.ps1`
+- `.github/workflows/release.yml`
+- `installer/rmenu.iss`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo test --bin rmenu-updater`: OK
+- `cargo test startup_update_notice`: OK
+- `cargo check`: OK
+- `cargo run --bin rmenu-updater -- install ... --dry-run` with file fixtures: OK
+- fake cached update `rmenu.exe --data-dir <temp> --metrics`: OK
+- `git diff --check`: OK
+
+Notes:
+
+- `rmenu-updater.exe` downloads installer and SHA256SUMS assets, verifies installer SHA256, requests daemon quit, waits briefly for rMenu processes, runs the installer, and attempts daemon restart.
+- UI Enter on the update prompt now passes cached update metadata and `--data-dir` to the updater.
+- The automated dry-run does not execute a real installer.
+
+Next:
+
+- Finish T092 docs.
+
+### 2026-05-07 05:15 — T092 done and release package rebuilt with updater
+
+Task:
+
+- T092 — Document updater operations and troubleshooting: done.
+
+Files changed for T092:
+
+- `README.md`
+- `INSTALL.md`
+- `RELEASE_CHECKLIST.md`
+- `docs/update-workflow.md`
+- `docs/release/BINARY_SIGNING.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+
+Validation:
+
+- `git diff --check`: OK
+- `cargo test --bin rmenu-updater`: OK
+- `cargo check`: OK
+- `scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -IncludeInstaller`: OK
+  - ran `cargo fmt`, `cargo test`, `cargo check`, `cargo build --release`;
+  - built installer;
+  - generated `dist\rmenu-v0.3.0-windows-x64.zip`, `dist\installers\rmenu-setup-v0.3.0.exe`, and `dist\SHA256SUMS.txt`.
+- Zip inspection confirmed:
+  - `rmenu-v0.3.0-windows-x64/rmenu-updater.exe`;
+  - `rmenu-v0.3.0-windows-x64/docs/update-workflow.md`.
+
+Current artifacts ready for manual smoke:
+
+- `dist\installers\rmenu-setup-v0.3.0.exe`
+- `dist\rmenu-v0.3.0-windows-x64.zip`
+- `dist\SHA256SUMS.txt`
+
+Queue state:
+
+- No pending executable tasks remain.
+- Remaining release gates are manual/approval blocked: T085 installer smoke, T086 publish release, T093 updater end-to-end validation.
+
+### 2026-05-07 05:20 — /start-cont status checkpoint
+
+Result:
+
+- No executable pending or partial tasks remain in `ACTIVE_QUEUE.md`.
+- Queue is blocked on manual/user-gated tasks only.
+
+Blocked gates:
+
+- T020 — Manual launcher/module UX validation.
+- T047 — Define/implement RSnip portable config integration if needed.
+- T048 — Specify installer UX for reusable rMenu data folder.
+- T049 — Update docs and manual validation for data-root RSnip install UX.
+- T064 — Future: support multiple registries and conflict policy.
+- T085 — Manual installer smoke validation.
+- T086 — Publish v0.3.0 GitHub Release.
+- T093 — Manual updater end-to-end validation.
+
+Next recommended action:
+
+- Run T085 manually with `dist\installers\rmenu-setup-v0.3.0.exe`.
+
+### 2026-05-07 05:40 — daemon systray added before installer smoke
+
+User feedback:
+
+- Installer/daemon flow works well, but a resident launcher needs a system tray icon so users do not need Task Manager to quit/control the daemon.
+
+Changes:
+
+- Added system tray icon lifecycle to `rmenu-daemon.exe`.
+- Tray behavior:
+  - double-click icon opens rMenu;
+  - right-click opens menu;
+  - menu has `Open rMenu` and `Quit rMenu daemon`;
+  - tray icon is removed during daemon shutdown.
+- Updated install/release docs to mention tray behavior.
+- Rebuilt package and installer artifacts.
+
+Files changed:
+
+- `src/daemon_main.rs`
+- `INSTALL.md`
+- `RELEASE_CHECKLIST.md`
+- `STATE.md`
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo test`: OK
+- `cargo check`: OK
+- `scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -IncludeInstaller`: OK
+- Zip inspection confirmed `rmenu-daemon.exe` and `rmenu-updater.exe`: OK
+- `git diff --check`: OK
+
+Notes:
+
+- Existing installed daemon was detected at `C:\Program Files\rMenu\rmenu-daemon.exe`; it was not stopped automatically.
+- New installer artifact is ready at `dist\installers\rmenu-setup-v0.3.0.exe`.
+
+### 2026-05-07 06:00 — systray context-menu fix and installer rebuild
+
+User feedback:
+
+- Tray entry exists but has no useful icon and right-click menu/actions did not work.
+
+Changes:
+
+- Changed daemon tray host from message-only window to hidden normal window for shell menu compatibility.
+- Removed `NIM_SETVERSION` v4 mode so legacy tray mouse messages are delivered consistently.
+- Handle `WM_LBUTTONUP`/double-click to open rMenu.
+- Handle `WM_RBUTTONDOWN`, `WM_RBUTTONUP`, and `WM_CONTEXTMENU` to open context menu.
+- Kept placeholder Windows application icon; custom icon still pending user asset.
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test --bin rmenu-daemon`: OK
+- `scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -IncludeInstaller`: OK
+
+Artifact ready:
+
+- `dist\installers\rmenu-setup-v0.3.0.exe`
+
+### 2026-05-07 06:20 — custom tray icon embedded and menu diagnostics added
+
+User feedback:
+
+- Provided `ico.png` and `ico.svg` assets.
+- Tray tooltip appears, but context menu still did not show.
+
+Changes:
+
+- Generated `assets/rmenu.ico` from `ico.png`.
+- Embedded icon in `resource.rc` as `IDI_RMENU`.
+- Daemon tray now loads `IDI_RMENU`, falling back to `IDI_APPLICATION` only if resource load fails.
+- Added tray event/menu command logging to help diagnose context-menu delivery if it still fails after reinstall.
+- Added WM_COMMAND fallback handling for tray menu command IDs.
+- Rebuilt package and installer artifacts.
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo test --bin rmenu-daemon`: OK
+- `cargo check`: OK
+- `scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -IncludeInstaller`: OK
+
+Artifact ready:
+
+- `dist\installers\rmenu-setup-v0.3.0.exe`
+
+### 2026-05-07 06:35 — tray callback moved into window proc
+
+Root cause:
+
+- Shell tray callbacks can be delivered directly to the window procedure, bypassing the `GetMessageW` loop interception. The daemon window proc was forwarding the custom tray message to `DefWindowProcW`, so right-click events could be ignored even though the tray icon and tooltip existed.
+
+Changes:
+
+- Handle `WM_DAEMON_TRAY` in `daemon_window_proc`.
+- Window proc now posts `WM_COMMAND` for `Open rMenu` and `Quit rMenu daemon` menu results.
+- Main daemon loop handles those `WM_COMMAND` IDs with runtime access.
+- Rebuilt package and installer artifacts.
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `cargo test --bin rmenu-daemon`: OK
+- `scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -IncludeInstaller`: OK
+
+Artifact ready:
+
+- `dist\installers\rmenu-setup-v0.3.0.exe`
+
+### 2026-05-07 06:50 — Start Menu shortcut icon polish
+
+User feedback:
+
+- Installer works and tray works, but Start Menu shortcuts show generic/mismatched icons.
+
+Changes:
+
+- Updated Inno Setup `[Icons]` entries so all Start Menu shortcuts use `IconFilename: "{app}\rmenu.exe"`.
+- Added `cargo:rerun-if-changed=assets/rmenu.ico` to `build.rs` so icon resource updates rebuild correctly.
+- Updated release checklist to require Start Menu shortcuts use the rMenu app icon.
+- Rebuilt package and installer artifacts.
+
+Validation:
+
+- `cargo fmt --all`: OK
+- `cargo check`: OK
+- `scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -IncludeInstaller`: OK
+  - includes full `cargo test`, `cargo check`, `cargo build --release`, and installer build.
+- `git diff --check`: OK
+
+Artifact ready:
+
+- `dist\installers\rmenu-setup-v0.3.0.exe`

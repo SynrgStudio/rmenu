@@ -7,7 +7,7 @@ Applies to: Windows zip releases
 
 ## 1. Current status
 
-Current `rmenu` release artifacts are expected to be unsigned Windows binaries packaged in a zip file.
+Current `rmenu` release artifacts are expected to be unsigned Windows binaries packaged in a zip file and an Inno Setup installer.
 
 Current recommendation:
 
@@ -19,7 +19,7 @@ Binary signing is not required to complete Wave 0 packaging/release.
 
 ## 2. What checksums provide
 
-SHA256 checksums help users verify that a downloaded artifact matches the file published by the project.
+SHA256 checksums help users and `rmenu-updater.exe` verify that a downloaded artifact matches the file published by the project.
 
 Checksums help detect:
 
@@ -70,6 +70,7 @@ Cons:
 Current fit:
 
 - recommended for initial post-freeze releases.
+- updater MVP verifies SHA256 before executing the installer, but this does not replace publisher identity/signing.
 
 ---
 

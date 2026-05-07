@@ -2,6 +2,8 @@ param(
   [string]$Version,
   [switch]$PackageOnly,
   [switch]$SkipValidation,
+  [switch]$IncludeInstaller,
+  [string]$InnoSetupPath,
   [switch]$DryRun
 )
 
@@ -115,8 +117,15 @@ function Assert-TagAvailable([string]$TagName) {
   if ($remoteTag) { Fail "Remote tag already exists on origin: $TagName" }
 
   if (-not $PackageOnly) {
-    & gh release view $TagName *> $null
-    if ($LASTEXITCODE -eq 0) { Fail "GitHub Release already exists: $TagName" }
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      & gh release view $TagName *> $null
+      $releaseExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($releaseExitCode -eq 0) { Fail "GitHub Release already exists: $TagName" }
     $global:LASTEXITCODE = 0
   }
 }
@@ -172,7 +181,9 @@ function New-ReleasePackage([string]$TargetVersion) {
     New-Item -ItemType Directory -Force (Join-Path $stage "module-examples") | Out-Null
 
     Copy-Item "target\release\rmenu.exe" $stage -Force
+    Copy-Item "target\release\rmenu-daemon.exe" $stage -Force
     Copy-Item "target\release\rmenu-module-host.exe" $stage -Force
+    Copy-Item "target\release\rmenu-updater.exe" $stage -Force
     Copy-Item "config_example.ini" $stage -Force
 
     $docs = @(
@@ -196,6 +207,11 @@ function New-ReleasePackage([string]$TargetVersion) {
       Copy-IfExists $doc $stage
     }
 
+    New-Item -ItemType Directory -Force (Join-Path $stage "docs") | Out-Null
+    Copy-IfExists "docs\companion-and-rmods-workflow.md" (Join-Path $stage "docs\companion-and-rmods-workflow.md")
+    Copy-IfExists "docs\rmods-registry.md" (Join-Path $stage "docs\rmods-registry.md")
+    Copy-IfExists "docs\update-workflow.md" (Join-Path $stage "docs\update-workflow.md")
+
     Copy-IfExists "modules\calculator.rmod" (Join-Path $stage "module-examples\calculator.rmod")
     Copy-IfExists "modules\local-scripts.rmod" (Join-Path $stage "module-examples\local-scripts.rmod")
     Copy-IfExists "modules\examples\shortcuts.example.rmod" (Join-Path $stage "module-examples\shortcuts.example.rmod")
@@ -211,8 +227,40 @@ function New-ReleasePackage([string]$TargetVersion) {
       } | Set-Content -Path $checksumPath -Encoding utf8
 
     Compress-Archive -Path $stage -DestinationPath $zipPath
+
+    $installerPath = Join-Path $dist "installers\rmenu-setup-v$TargetVersion.exe"
+    if ($IncludeInstaller) {
+      $installerArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "installer\build-installer.ps1",
+        "-Version",
+        $TargetVersion,
+        "-SkipBuild",
+        "-Force"
+      )
+      if ($InnoSetupPath) {
+        $installerArgs += @("-InnoSetupPath", $InnoSetupPath)
+      }
+      $null = Invoke-External "powershell" $installerArgs
+      if (-not (Test-Path $installerPath)) { Fail "Installer was not created: $installerPath" }
+    }
+
+    $checksumLines = New-Object System.Collections.Generic.List[string]
     $zipHash = Get-Sha256File $zipPath
-    "$zipHash  $packageName.zip" | Set-Content -Path $releaseSums -Encoding utf8
+    $checksumLines.Add("$zipHash  $packageName.zip")
+    if ($IncludeInstaller) {
+      $installerHash = Get-Sha256File $installerPath
+      $checksumLines.Add("$installerHash  installers/rmenu-setup-v$TargetVersion.exe")
+    }
+    $checksumLines | Set-Content -Path $releaseSums -Encoding utf8
+
+    $artifactLines = New-Object System.Collections.Generic.List[string]
+    $artifactLines.Add("- $packageName.zip")
+    if ($IncludeInstaller) { $artifactLines.Add("- installers/rmenu-setup-v$TargetVersion.exe") }
+    $artifactLines.Add("- SHA256SUMS.txt")
 
     $notesPath = Join-Path $dist "RELEASE_NOTES-v$TargetVersion.md"
     @(
@@ -220,10 +268,8 @@ function New-ReleasePackage([string]$TargetVersion) {
       "",
       "See CHANGELOG.md in the release artifact for details.",
       "",
-      "Artifacts:",
-      "- $packageName.zip",
-      "- SHA256SUMS.txt"
-    ) | Set-Content -Path $notesPath -Encoding utf8
+      "Artifacts:"
+    ) + $artifactLines | Set-Content -Path $notesPath -Encoding utf8
   }
 
   return [pscustomobject]@{
@@ -231,6 +277,7 @@ function New-ReleasePackage([string]$TargetVersion) {
     Stage = $stage
     ZipPath = $zipPath
     ChecksumPath = $releaseSums
+    InstallerPath = if ($IncludeInstaller) { $installerPath } else { $null }
     NotesPath = (Join-Path $dist "RELEASE_NOTES-v$TargetVersion.md")
   }
 }
@@ -286,15 +333,22 @@ function Publish-Release([string]$TargetVersion, [object]$Package) {
   $targetSha = (& git rev-parse HEAD).Trim()
   if (-not $targetSha) { Fail "Could not determine release commit SHA." }
 
-  Write-Step "Creating GitHub Release $tag"
-  Invoke-External "gh" @(
+  $releaseArgs = @(
     "release", "create", $tag,
     $Package.ZipPath,
-    $Package.ChecksumPath,
+    $Package.ChecksumPath
+  )
+  if ($Package.InstallerPath) {
+    $releaseArgs += $Package.InstallerPath
+  }
+  $releaseArgs += @(
     "--target", $targetSha,
     "--title", "rmenu $tag",
     "--notes-file", $Package.NotesPath
   )
+
+  Write-Step "Creating GitHub Release $tag"
+  Invoke-External "gh" $releaseArgs
 
   Write-Step "Fetching tags"
   Invoke-External "git" @("fetch", "--tags", "origin")
@@ -324,9 +378,14 @@ if (-not $PackageOnly) {
 Assert-TagAvailable $tagName
 
 if ($targetVersion -ne $currentVersion) {
-  Write-Step "Updating Cargo.toml version"
-  Write-Info "$currentVersion -> $targetVersion"
-  Set-CargoVersion $targetVersion
+  if ($PackageOnly) {
+    Write-Step "Package-only version override"
+    Write-Info "Using package name version $targetVersion without modifying Cargo.toml ($currentVersion)."
+  } else {
+    Write-Step "Updating Cargo.toml version"
+    Write-Info "$currentVersion -> $targetVersion"
+    Set-CargoVersion $targetVersion
+  }
 }
 
 $commitMessage = $null

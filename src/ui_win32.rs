@@ -1,6 +1,6 @@
 use crate::app_state::{
     ensure_selection_visible, AppState, LauncherItem, LauncherItemTone, RmodsInstallStatusView,
-    RmodsPendingAction, RmodsUiItem, RtasksInputPriority, RtasksInputStatus,
+    RmodsPendingAction, RmodsUiItem, RtasksInputPriority, RtasksInputStatus, StartupUpdateNotice,
 };
 use crate::fuzzy::fuzzy_score;
 use crate::launcher::{
@@ -27,6 +27,8 @@ use crate::sources::persist_history_entry;
 use std::ffi::OsStr;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::process::CommandExt;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Mutex;
 use std::thread::sleep;
@@ -71,6 +73,7 @@ const INSTALL_START_TIMER_ID: usize = 43;
 const WM_INSTALL_PROGRESS: u32 = 0x8000 + 1;
 const WM_INSTALL_DONE: u32 = 0x8000 + 2;
 const INPUT_PLACEHOLDER_TEXT: &str = concat!("rMenu ", env!("CARGO_PKG_VERSION"));
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug, Clone, Copy)]
 pub struct UiLatencyMetrics {
@@ -707,6 +710,53 @@ fn rmods_status_tone(status: RmodsInstallStatusView) -> Option<LauncherItemTone>
     }
 }
 
+fn launch_update_changelog(notice: &StartupUpdateNotice) -> Result<(), String> {
+    launch_target(&notice.release_url).map_err(|error| error.to_string())
+}
+
+fn launch_update_installer(notice: &StartupUpdateNotice) -> Result<(), String> {
+    let installer_url = notice
+        .installer_asset_url
+        .as_ref()
+        .ok_or_else(|| "update metadata is missing installer asset".to_string())?;
+    let checksums_url = notice
+        .checksums_asset_url
+        .as_ref()
+        .ok_or_else(|| "update metadata is missing SHA256SUMS asset".to_string())?;
+    let updater_path = std::env::current_exe()
+        .map_err(|error| error.to_string())?
+        .parent()
+        .ok_or_else(|| "could not resolve rmenu-updater.exe directory".to_string())?
+        .join("rmenu-updater.exe");
+
+    let mut command = Command::new(updater_path);
+    command
+        .arg("install")
+        .arg("--version")
+        .arg(&notice.version)
+        .arg("--release-url")
+        .arg(&notice.release_url)
+        .arg("--installer-url")
+        .arg(installer_url)
+        .arg("--checksums-url")
+        .arg(checksums_url);
+    if let Some(data_dir) = &notice.data_dir {
+        command.arg("--data-dir").arg(data_dir);
+    }
+    command
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to launch updater: {error}"))
+}
+
+fn set_runtime_feedback(message: impl Into<String>, kind: InputAccessoryKind) {
+    let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+    if let Some(runtime) = runtime_guard.as_mut() {
+        runtime.set_runtime_feedback(message, kind);
+    }
+}
+
 fn rmods_status_label(status: RmodsInstallStatusView) -> &'static str {
     match status {
         RmodsInstallStatusView::NotInstalled => "not installed",
@@ -883,7 +933,44 @@ fn apply_rmods_changes(app_state: &mut AppState) -> Result<RmodsApplySummary, St
     }
 }
 
+fn startup_update_notice_item(notice: &StartupUpdateNotice) -> LauncherItem {
+    let mut item = LauncherItem::new(
+        format!("Update available: rMenu v{}", notice.version),
+        "update:install".to_string(),
+        crate::app_state::LauncherSource::Direct,
+    );
+    item.trailing_hint =
+        Some("Enter install now | Ctrl+Enter view changelog | Any key continue".to_string());
+    item.trailing_badge = Some("update available".to_string());
+    item.trailing_badge_tone = Some(LauncherItemTone::Warning);
+    item
+}
+
+fn render_startup_update_notice(app_state: &mut AppState) -> bool {
+    let Some(notice) = app_state.startup_update_notice.as_ref() else {
+        return false;
+    };
+    app_state.matching_items = vec![startup_update_notice_item(notice)];
+    app_state.selected_index = 0;
+    app_state.scroll_offset = 0;
+    true
+}
+
+fn dismiss_startup_update_notice(app_state: &mut AppState) -> bool {
+    if app_state.startup_update_notice.is_none() {
+        return false;
+    }
+    app_state.startup_update_notice = None;
+    app_state.selected_index = 0;
+    update_matching_items_from_config(app_state);
+    true
+}
+
 fn update_matching_items_from_config(app_state: &mut AppState) {
+    if render_startup_update_notice(app_state) {
+        return;
+    }
+
     if !is_rtasks_input(&app_state.current_input) {
         app_state.rtasks_status = None;
         app_state.rtasks_priority = None;
@@ -1410,6 +1497,37 @@ unsafe extern "system" fn window_proc(
             let key_code = w_param.0 as i32;
             let mut app_state_guard = APP_STATE.lock().unwrap();
             if let Some(app_state) = app_state_guard.as_mut() {
+                let ctrl_down = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
+                if let Some(notice) = app_state.startup_update_notice.clone() {
+                    if key_code == VK_RETURN.0 as i32 && ctrl_down {
+                        let result = launch_update_changelog(&notice);
+                        dismiss_startup_update_notice(app_state);
+                        if let Err(error) = result {
+                            set_runtime_feedback(
+                                format!("Failed to open changelog: {error}"),
+                                InputAccessoryKind::Error,
+                            );
+                        }
+                        refresh_window(hwnd, app_state);
+                        return LRESULT(0);
+                    }
+                    if key_code == VK_RETURN.0 as i32 {
+                        let result = launch_update_installer(&notice);
+                        dismiss_startup_update_notice(app_state);
+                        match result {
+                            Ok(()) => request_ui_exit(hwnd, 0),
+                            Err(error) => {
+                                set_runtime_feedback(error, InputAccessoryKind::Error);
+                                refresh_window(hwnd, app_state);
+                            }
+                        }
+                        return LRESULT(0);
+                    }
+                    dismiss_startup_update_notice(app_state);
+                    InvalidateRect(hwnd, None, true);
+                    return LRESULT(0);
+                }
+
                 let module_key_event = build_module_key_event(key_code);
                 let input_before_modules = app_state.current_input.clone();
                 {
@@ -1424,7 +1542,6 @@ unsafe extern "system" fn window_proc(
                 }
 
                 let alt_down = unsafe { (GetKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0 };
-                let ctrl_down = unsafe { (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0 };
                 if is_rtasks_input(&app_state.current_input) && alt_down {
                     match key_code {
                         code if code == '1' as i32 => {
@@ -1938,9 +2055,11 @@ fn run_ui_internal(
 
             let matching_started_at = Instant::now();
             if app_state.current_input.trim().is_empty() {
-                app_state.matching_items.clear();
-                app_state.selected_index = 0;
-                app_state.scroll_offset = 0;
+                if !render_startup_update_notice(app_state) {
+                    app_state.matching_items.clear();
+                    app_state.selected_index = 0;
+                    app_state.scroll_offset = 0;
+                }
             } else {
                 update_matching_items_from_config(app_state);
             }
@@ -2190,12 +2309,41 @@ pub fn measure_ui_latencies(
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_row_zones, find_quick_select_index, normalize_quick_select_items, rmods_badge_tone,
+        compute_row_zones, dismiss_startup_update_notice, find_quick_select_index,
+        normalize_quick_select_items, render_startup_update_notice, rmods_badge_tone,
         rmods_status_tone,
     };
     use crate::app_state::{
         AppState, LauncherItem, LauncherItemTone, LauncherSource, RmodsInstallStatusView,
+        StartupUpdateNotice,
     };
+
+    #[test]
+    fn startup_update_notice_renders_and_dismisses_for_current_open() {
+        let mut state = AppState {
+            startup_update_notice: Some(StartupUpdateNotice {
+                version: "0.3.1".to_string(),
+                release_url: "https://github.com/SynrgStudio/rmenu/releases/tag/v0.3.1".to_string(),
+                installer_asset_url: Some(
+                    "https://example.test/rmenu-setup-v0.3.1.exe".to_string(),
+                ),
+                checksums_asset_url: Some("https://example.test/SHA256SUMS.txt".to_string()),
+                data_dir: Some(r"C:\rMenuData".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        assert!(render_startup_update_notice(&mut state));
+        assert_eq!(state.matching_items.len(), 1);
+        assert_eq!(state.matching_items[0].target, "update:install");
+        assert_eq!(
+            state.matching_items[0].trailing_badge_tone,
+            Some(LauncherItemTone::Warning)
+        );
+
+        assert!(dismiss_startup_update_notice(&mut state));
+        assert_eq!(state.startup_update_notice, None);
+    }
 
     #[test]
     fn quick_select_conflicts_keep_first_visible_item() {

@@ -122,6 +122,15 @@ pub struct RmodsUiState {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct StartupUpdateNotice {
+    pub version: String,
+    pub release_url: String,
+    pub installer_asset_url: Option<String>,
+    pub checksums_asset_url: Option<String>,
+    pub data_dir: Option<String>,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct AppState {
     pub current_input: String,
@@ -139,6 +148,7 @@ pub struct AppState {
     pub rtasks_status: Option<RtasksInputStatus>,
     pub rtasks_priority: Option<RtasksInputPriority>,
     pub rmods: RmodsUiState,
+    pub startup_update_notice: Option<StartupUpdateNotice>,
 }
 
 pub fn ensure_selection_visible(app_state: &mut AppState, max_visible_items: usize) {

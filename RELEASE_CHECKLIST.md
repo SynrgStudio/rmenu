@@ -1,14 +1,16 @@
 # RELEASE CHECKLIST — rmenu
 
-Status: active  
-Applies to: Windows x64 zip releases  
-Current release line: `0.2.x`
+Status: active
+Applies to: Windows x64 zip releases and installer preparation
+Current release target: `0.3.0`
 
 ---
 
 ## 1. Release principles
 
-`rmenu` core v1 is frozen. Release work must not add product behavior to the core.
+`rmenu` core v1 is frozen. Release work must not add product behavior to the core unless it is already planned as a generic platform primitive.
+
+The `0.3.0` release scope is the daemon/rmods/resident-helper wave: warm daemon launch, persistent data root, native companions, `/rmods`, `rpack`, resident helpers, validated registry rpacks, installer packaging, and updater foundation. Fully automatic/background updates remain out of scope.
 
 A release is ready when:
 
@@ -54,6 +56,7 @@ Notes:
 
 - The script does not use `git add .` or `git add -A`; it stages exact changed paths after showing them for confirmation.
 - The script creates the GitHub Release directly with `gh`; the GitHub Actions workflow remains a manual reproducible fallback and is not triggered by release tags.
+- Pass `-IncludeInstaller` to include `rmenu-setup-v<VERSION>.exe` and its SHA256 in the release assets.
 - The script requires `gh auth login` before publishing.
 - `dist/` artifacts are uploaded to the GitHub Release, not committed.
 
@@ -70,6 +73,7 @@ git status --short
 ```
 
 - [ ] Confirm version in `Cargo.toml`.
+- [ ] For `0.3.0`, leave the version bump to `scripts/release-local.ps1` or the final release task; do not bump during planning-only work.
 - [ ] Confirm `CHANGELOG.md` has an entry for the release.
 - [ ] Confirm `CORE_FREEZE_V1.md` still reflects the current core policy.
 - [ ] Confirm `INSTALL.md` and `README.md` links are current.
@@ -92,7 +96,9 @@ Expected:
 - [ ] `cargo check` passes.
 - [ ] `cargo build --release` produces:
   - `target\release\rmenu.exe`
+  - `target\release\rmenu-daemon.exe`
   - `target\release\rmenu-module-host.exe`
+  - `target\release\rmenu-updater.exe`
 
 ### Release diagnostics
 
@@ -149,7 +155,9 @@ Recommended artifact layout:
 ```text
 rmenu-v<VERSION>-windows-x64/
 ├── rmenu.exe
+├── rmenu-daemon.exe
 ├── rmenu-module-host.exe
+├── rmenu-updater.exe
 ├── config_example.ini
 ├── README.md
 ├── INSTALL.md
@@ -169,8 +177,31 @@ rmenu-v<VERSION>-windows-x64/
 │   ├── calculator.rmod
 │   ├── local-scripts.rmod
 │   └── shortcuts.example.rmod
+├── docs/
+│   ├── companion-and-rmods-workflow.md
+│   ├── rmods-registry.md
+│   └── update-workflow.md
 └── checksums.txt
 ```
+
+Installer artifact name when enabled:
+
+```text
+rmenu-setup-v<VERSION>.exe
+```
+
+Installer expectations:
+
+- installs app binaries under `C:\Program Files\rMenu` by default;
+- asks for the reusable data folder, defaulting to `C:\rMenuData`;
+- stores the chosen data folder in `HKCU\Software\SynrgStudio\rMenu\DataDir` for future upgrades;
+- preserves the chosen data folder during install, upgrade, and uninstall;
+- registers `rmenu-daemon.exe` at user startup by default, unless the user unchecks the task;
+- launches `rmenu-daemon.exe` after install by default, unless the user unchecks the task;
+- Start Menu shortcuts use the rMenu app icon;
+- daemon shows a system tray icon with Open and Quit actions;
+- installs `rmenu-updater.exe` next to `rmenu.exe`;
+- removes app binaries/startup entry on uninstall without deleting the data root.
 
 Notes:
 
@@ -182,23 +213,55 @@ Notes:
 
 ---
 
-## 5. Checksums
+## 5. Installer artifact checks
 
-Generate SHA256 checksums for the zip and key binaries.
+When building the installer locally:
+
+```powershell
+.\installer\build-installer.ps1 -Version 0.3.0 -SkipBuild -Force
+```
+
+When validating all artifacts locally without publishing:
+
+```powershell
+.\scripts\release-local.ps1 -Version 0.3.0 -PackageOnly -SkipValidation -IncludeInstaller
+```
+
+Updater smoke validation:
+
+```powershell
+# Use file:// fixtures and --dry-run; do not execute a real installer during automated validation.
+.\target\debug\rmenu-updater.exe install --version 9.9.9 --release-url https://example.test/release --installer-url file://C:/tmp/rmenu-setup-v9.9.9.exe --checksums-url file://C:/tmp/SHA256SUMS.txt --data-dir C:\Temp\rmenu-updater-smoke --dry-run
+```
+
+Expected `dist\SHA256SUMS.txt` entries:
+
+```text
+rmenu-v<VERSION>-windows-x64.zip
+installers/rmenu-setup-v<VERSION>.exe
+```
+
+---
+
+## 6. Checksums
+
+Generate SHA256 checksums for the zip, installer, and key binaries.
 
 PowerShell example:
 
 ```powershell
 Get-FileHash .\target\release\rmenu.exe -Algorithm SHA256
+Get-FileHash .\target\release\rmenu-daemon.exe -Algorithm SHA256
 Get-FileHash .\target\release\rmenu-module-host.exe -Algorithm SHA256
 Get-FileHash .\dist\rmenu-v<VERSION>-windows-x64.zip -Algorithm SHA256
+Get-FileHash .\dist\installers\rmenu-setup-v<VERSION>.exe -Algorithm SHA256
 ```
 
 The local release script and GitHub Actions workflow both generate checksums automatically.
 
 ---
 
-## 6. GitHub Actions validation
+## 7. GitHub Actions validation
 
 The GitHub Actions workflow is a manual fallback only:
 
@@ -216,7 +279,7 @@ GitHub validation checks:
 
 ---
 
-## 7. Release publication checklist
+## 8. Release publication checklist
 
 Preferred publication path:
 
@@ -234,6 +297,7 @@ Manual fallback:
 - [ ] Optionally run GitHub Actions manually as a reproducibility check.
 - [ ] Confirm GitHub Release includes:
   - `rmenu-v<VERSION>-windows-x64.zip`;
+  - `rmenu-setup-v<VERSION>.exe` when installer is accepted;
   - `SHA256SUMS.txt`;
   - release notes.
 - [ ] Download artifact from GitHub Release.

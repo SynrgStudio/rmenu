@@ -59,7 +59,7 @@ Download the latest Windows x64 zip from:
 
 - <https://github.com/SynrgStudio/rmenu/releases>
 
-See `INSTALL.md` for zip install, PATH setup, checksum verification, and manual update instructions.
+See `INSTALL.md` for installer/zip install, data-folder setup, startup daemon behavior, checksum verification, and update instructions.
 
 Release docs:
 
@@ -187,7 +187,7 @@ While the input starts with `t `, `Alt+1/2/3` toggles `TODO/DOING/DONE`, and `Al
 
 Future installer UX should allow selecting an existing data folder, defaulting to `C:\rMenuData`, and reuse its existing modules, companions, config, and state without overwriting them.
 
-See `docs/companion-and-rmods-workflow.md` for the full companion, `/rmods`, `rpack`, module-state, and color-picker workflow.
+See `docs/companion-and-rmods-workflow.md` for the full companion, `/rmods`, `rpack`, module-state, and color-picker workflow. Planned updater behavior is specified in `docs/update-workflow.md`.
 
 ### `/rmods` registry workflow
 
@@ -381,7 +381,7 @@ Module documentation:
 - `DECISIONS.md` — accepted architecture decisions.
 - `POST_FREEZE_ROADMAP.md` — post-freeze module/product roadmap.
 - `RELEASE_CHECKLIST.md` — maintainer release checklist and artifact spec.
-- `INSTALL.md` — zip install and manual update guide.
+- `INSTALL.md` — installer/zip install and update guide.
 - `CHANGELOG.md` — release notes.
 - `docs/release/BINARY_SIGNING.md` — binary signing and checksum policy.
 

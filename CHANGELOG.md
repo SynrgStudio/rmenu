@@ -10,11 +10,37 @@ This project uses pragmatic versioning during the `0.x` line. Public module API 
 
 ### Added
 
-- Wave 0 packaging/release documentation and workflow preparation.
+- Daemon-backed warm launcher mode with prewarmed modules and global hotkeys for rMenu and RTasks panel.
+- Persistent data-root layout under `C:\rMenuData` for modules, companions, config, and state.
+- Native RSnip companion discovery/install workflow with direct IPC actions for `snip`, `rec`, and `ocr`.
+- Native RTasks companion workflow with embedded `t ` task capture and `tasks` panel alias.
+- Core-owned `/rmods` registry UI for installing, updating, and removing `.rmod` and `rpack` packages from the SynrgStudio registry.
+- `rpack` folder-package support with integrity-checked file lists and module state storage under `<data_dir>\state\modules\<module-name>`.
+- Generic resident-helper lifecycle for rpack/directory modules managed by `rmenu-daemon`.
+- Resident helper rpacks in the registry: `taskbar-volume` and `thorium-tabs`.
+- Isolated native `color-picker` rpack helper with screen magnifier, precision mode, and clipboard copy.
+- `/rmods` status badges with colored install states.
 
 ### Changed
 
 - Future product expansion is tracked in `POST_FREEZE_ROADMAP.md` and should happen through modules first.
+- RSnip public aliases are intentionally minimal: `snip`, `rec`, and `ocr`.
+- RTasks public panel alias is intentionally minimal: `tasks`; task creation is handled through embedded `t ` input.
+- Shortcuts rpack user data now lives in module state and migrates legacy package-local files automatically.
+- Release target for this wave is `0.3.0`; version bump and GitHub Release publication are deferred to the release task.
+
+### Fixed
+
+- Color picker preview flicker, text overflow, click passthrough, mouse hook lag, and precision cursor behavior.
+- Daemon warm-open latency by caching companion discovery and avoiding empty-input provider work.
+- TaskbarVolume resident helper now passes middle-click through on taskbar app icons while retaining mute on empty taskbar background.
+- ThoriumTabs resident helper now avoids Windows Alt+Tab UI and suppresses right-button release so the browser context menu does not open.
+- `/rmods` status badge colors remain stable after moving the selection.
+
+### Release scope
+
+- `0.3.0` should ship portable zip packaging first, then installer artifacts once installer validation passes.
+- Auto-updater installation is not part of the initial `0.3.0` release unless the updater tasks are explicitly completed and accepted.
 
 ---
 

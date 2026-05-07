@@ -1,6 +1,6 @@
 [package]
 name = "rmenu"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 description = "Lightweight Windows launcher and modular command surface"
 authors = ["SynrgStudio"]
@@ -70,3 +70,7 @@ path = "src/module_host_main.rs"
 [[bin]]
 name = "rmenu-daemon"
 path = "src/daemon_main.rs"
+
+[[bin]]
+name = "rmenu-updater"
+path = "src/updater_main.rs"

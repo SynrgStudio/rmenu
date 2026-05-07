@@ -363,3 +363,27 @@ The core is not allowed to know feature semantics such as taskbar volume, Thoriu
 - Future resident features can reuse the same lifecycle primitive.
 - Resident helpers are a stronger trust boundary than ordinary JS modules because they may install global hooks or interact with the OS.
 - `/rmods` and docs should make resident-helper behavior visible enough for users to decide whether to install the module.
+
+---
+
+## DEC-013 — Updates are explicit, non-intrusive, and checksum-verified
+
+Status: Accepted
+Date: 2026-05-07
+
+### Context
+
+rMenu will be distributed through GitHub Releases with a portable zip and Windows installer. Once users install rMenu, they should be notified when a newer release exists, but the launcher must remain fast and non-intrusive.
+
+### Decision
+
+rMenu may show a startup update notice when cached release metadata says a newer version exists. The notice is dismissed for the current open by pressing any normal key. `Enter` starts the install flow. `Ctrl+Enter` opens the GitHub Release changelog. If the user does not install, the notice can appear again on the next rMenu open.
+
+Updates are not installed silently in the MVP. Installation is delegated to a separate `rmenu-updater.exe` process so running binaries can be replaced safely. The updater must verify SHA256 from the same GitHub Release before running an installer.
+
+### Consequences
+
+- Normal rMenu use is never blocked by update checks or prompts.
+- Network update checks should happen in background/daemon paths or through explicit forced checks, not directly in the hot launcher open path.
+- A failed update check or failed install must be recoverable and logged.
+- SHA256 verification is required before installer execution; Authenticode signing remains future hardening.

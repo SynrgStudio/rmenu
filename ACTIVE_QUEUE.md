@@ -1,8 +1,8 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-07 01:15
-planned_at: 2026-05-06 22:20
+updated_at: 2026-05-07 05:20
+planned_at: 2026-05-07 01:35
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -103,6 +103,30 @@ Replanned 2026-05-06 22:20 after resident helper decision:
   - `taskbar-volume`: mouse wheel/middle click over Windows taskbar controls system volume.
   - `thorium-tabs`: Alt+wheel/click gestures in Thorium map to tab navigation/close/reopen.
 - Core must remain generic: discover descriptors, start/stop/sync helpers, pass module/state/config paths, and expose diagnostics. It must not know what "taskbar volume" or "Thorium tabs" mean.
+
+
+
+Replanned 2026-05-07 01:35 after resident helpers and `/rmods` validation:
+
+- User accepted the resident-helper UX after the TaskbarVolume and ThoriumTabs fixes.
+- Next wave is release/install/update infrastructure, not more AHK feature migration.
+- Target release line should move to `0.3.0` because the shipped surface now includes daemon prewarm, `/rmods`, rpack installs, resident helpers, RSnip/RTasks companion workflows, and `/rmods` status-color UI.
+- Release artifacts must include all runtime binaries required by the current architecture:
+  - `rmenu.exe`;
+  - `rmenu-daemon.exe`;
+  - `rmenu-module-host.exe`.
+- Installer must preserve the reusable data root, defaulting to `C:\rMenuData`, and must not delete modules/state/companions/config during upgrades.
+- Updater UX target:
+  - when rMenu opens and an update is known, show a non-intrusive startup prompt;
+  - `Enter` downloads/verifies/installs;
+  - `Ctrl+Enter` opens the GitHub Release changelog;
+  - any other key dismisses only for the current rMenu open;
+  - if not installed, the prompt appears again on next open.
+- Updater safety target:
+  - no silent install in MVP;
+  - use GitHub Releases as source of truth;
+  - verify release asset SHA256 before running installer;
+  - use a separate `rmenu-updater.exe` process so running binaries can be replaced safely.
 
 ## Queue
 
@@ -2618,12 +2642,10 @@ Notes:
 
 ### T080 — Manual resident helper validation and acceptance
 
-Status: blocked
-Claimed by:
-Started:
-Last update: 2026-05-07 01:00
-Blocker:
-- Requires local Windows manual validation after T077/T078 are installed through `/rmods`.
+Status: done
+Claimed by: user/manual
+Started: 2026-05-07 01:00
+Last update: 2026-05-07 01:35
 Scope:
 - Validate taskbar-volume behavior:
   - wheel up/down over taskbar changes volume;
@@ -2651,7 +2673,450 @@ Depends on:
 - T079
 Notes:
 - This is the final acceptance gate for resident helpers.
-- Partial user validation: taskbar-volume wheel behavior works perfectly.
-- Feedback implemented in rmods 0.1.1 helpers: taskbar-volume passes middle-click through on taskbar app icons; thorium-tabs temporarily releases Alt before sending Ctrl+Tab/Ctrl+Shift+Tab to avoid Windows Alt+Tab UI.
-- Feedback implemented in thorium-tabs 0.1.2: Alt+right-click now also consumes the matching right-button release to prevent the browser context menu.
-- Remaining manual validation: confirm taskbar middle-click over icons opens a new app window instead of muting; confirm Thorium Alt+wheel no longer opens Windows Alt+Tab and switches tabs correctly; confirm Alt+RMB reopens the closed tab without opening the context menu.
+- User accepted behavior after fixes.
+- Confirmed: taskbar-volume works perfectly, including middle-click pass-through over app icons.
+- Confirmed: thorium-tabs Alt+wheel/click gestures work and Alt+RMB no longer opens the browser context menu.
+
+### T081 — Define v0.3.0 release scope and changelog
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 01:45
+Last update: 2026-05-07 01:55
+Scope:
+- Decide and document release target `0.3.0` for the daemon/rmods/resident-helper wave.
+- Update changelog from `[Unreleased]` with the shipped features/fixes from recent work.
+- Ensure release notes mention:
+  - daemon prewarmed hotkey UX;
+  - `/rmods` registry and rpack support;
+  - resident helper lifecycle;
+  - `taskbar-volume` and `thorium-tabs` rpacks in the registry;
+  - RSnip/RTasks companion workflows;
+  - `/rmods` status colors.
+DoD:
+- `CHANGELOG.md` has a complete `[Unreleased]` section ready for `0.3.0` release finalization.
+- `Cargo.toml` version strategy is explicit: either leave version bump to release script or bump to `0.3.0` in the release task.
+- Release scope excludes auto-updater install unless tasks T087+ are explicitly completed.
+Validation:
+- Documentation/version planning task; `git diff --check`.
+Files likely touched:
+- `CHANGELOG.md`
+- `RELEASE_CHECKLIST.md`
+- `STATE.md`
+Risk: low
+Depends on:
+- T080
+Notes:
+- Do not publish release yet in this task.
+- Changelog now captures the v0.3.0 daemon/rmods/resident-helper scope and explicitly leaves version bump/publication to release tasks.
+
+### T082 — Fix portable zip packaging for current runtime architecture
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 01:55
+Last update: 2026-05-07 02:15
+Scope:
+- Update local release script and GitHub release workflow so portable zip includes all required runtime binaries:
+  - `rmenu.exe`;
+  - `rmenu-daemon.exe`;
+  - `rmenu-module-host.exe`.
+- Include updated docs for data-root, daemon, `/rmods`, and resident helpers.
+- Ensure packaged examples remain examples, not active default modules.
+- Ensure `SHA256SUMS.txt` covers the portable zip.
+DoD:
+- `scripts/release-local.ps1 -PackageOnly -Version 0.3.0` can produce a zip containing all required binaries.
+- `.github/workflows/release.yml` stages the same required binaries.
+- Release docs/checklist match actual artifact layout.
+Validation:
+- `cargo fmt --all`
+- `cargo test`
+- `cargo check`
+- `cargo build --release`
+- `powershell -ExecutionPolicy Bypass -File scripts/release-local.ps1 -Version 0.3.0 -PackageOnly -SkipValidation`
+- inspect zip contents for `rmenu-daemon.exe` and `rmenu-module-host.exe`.
+Files likely touched:
+- `scripts/release-local.ps1`
+- `.github/workflows/release.yml`
+- `RELEASE_CHECKLIST.md`
+- `INSTALL.md`
+- `README.md`
+- `STATE.md`
+Risk: medium
+Depends on:
+- T081
+Notes:
+- Packaging release is safe before installer/updater.
+- Portable package script and workflow now include `rmenu-daemon.exe`, runtime docs, and verified package-only zip contents.
+
+### T083 — Add Windows installer MVP with Inno Setup
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 02:15
+Last update: 2026-05-07 02:35
+Scope:
+- Add an Inno Setup installer that installs binaries under `C:\Program Files\rMenu` by default.
+- Preserve default data root `C:\rMenuData`; never delete or overwrite module/user state on upgrade.
+- Include installer options/tasks for:
+  - Start Menu shortcut;
+  - optional daemon startup registration;
+  - optional launch daemon after install.
+- Stop running `rmenu-daemon` during install/upgrade before replacing binaries.
+- Keep installer minimal; no auto-updater logic in this task.
+DoD:
+- Installer script builds `rmenu-setup-v0.3.0.exe` locally when Inno Setup is available.
+- Fresh install places `rmenu.exe`, `rmenu-daemon.exe`, and `rmenu-module-host.exe` in install dir.
+- Upgrade install preserves `C:\rMenuData` contents.
+- Uninstall removes app binaries/startup entry but preserves `C:\rMenuData` unless a future explicit destructive option is added.
+Validation:
+- `cargo build --release`
+- installer build command if Inno Setup is installed;
+- if Inno Setup is missing, mark blocked with exact missing command/path.
+Files likely touched:
+- `installer/rmenu.iss`
+- `installer/build-installer.ps1`
+- `INSTALL.md`
+- `RELEASE_CHECKLIST.md`
+- `STATE.md`
+Risk: high
+Depends on:
+- T082
+Notes:
+- Use existing RSnip installer patterns as reference, but do not modify RSnip repo.
+- Added Inno Setup installer MVP and local build script; local build produced `rmenu-setup-v0.3.0.exe` successfully.
+
+### T084 — Add installer artifact and checksums to release workflow
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 02:35
+Last update: 2026-05-07 03:00
+Scope:
+- Extend local release packaging and GitHub workflow to optionally build/upload installer artifact.
+- Generate/check publish SHA256 for both:
+  - portable zip;
+  - installer exe.
+- Ensure release notes explain both install methods.
+DoD:
+- Local release package flow can produce/upload-ready zip, installer, and checksums.
+- GitHub release workflow can produce the same artifacts on Windows runner or documents required secret/tool setup.
+- `SHA256SUMS.txt` includes both artifacts when installer exists.
+Validation:
+- package-only release script run;
+- inspect `dist/SHA256SUMS.txt`;
+- workflow syntax review.
+Files likely touched:
+- `scripts/release-local.ps1`
+- `.github/workflows/release.yml`
+- `RELEASE_CHECKLIST.md`
+- `INSTALL.md`
+- `STATE.md`
+Risk: medium
+Depends on:
+- T083
+Notes:
+- If Inno Setup is not available in GitHub Actions by default, add explicit install step or document local-only installer build.
+- Local release script now supports `-IncludeInstaller`; GitHub workflow installs Inno Setup and uploads zip, installer, and combined checksums.
+
+### T085 — Manual installer smoke validation
+
+Status: blocked
+Claimed by:
+Started:
+Last update:
+Blocker:
+- Requires local Windows install/uninstall/upgrade validation after T083/T084.
+Scope:
+- Fresh install from `rmenu-setup-v0.3.0.exe`.
+- Launch rMenu and daemon from installed location.
+- Confirm `C:\rMenuData` is reused.
+- Install `taskbar-volume` and `thorium-tabs` through `/rmods` from GitHub registry.
+- Restart daemon and confirm resident helpers start.
+- Upgrade over existing install and confirm data root remains intact.
+- Uninstall and confirm app binaries/startup entry are removed while data root remains.
+DoD:
+- User accepts installer behavior.
+- Any installer quirks are documented or queued.
+Validation:
+- manual local Windows validation.
+Files likely touched:
+- `STATE.md`
+- docs if quirks are found
+Risk: high
+Depends on:
+- T084
+Notes:
+- This is the installer acceptance gate before public release.
+
+### T086 — Publish v0.3.0 GitHub Release
+
+Status: blocked
+Claimed by:
+Started:
+Last update:
+Blocker:
+- Requires explicit user approval after T081-T085 validation.
+Scope:
+- Finalize version/tag `v0.3.0`.
+- Produce final artifacts:
+  - `rmenu-v0.3.0-windows-x64.zip`;
+  - `rmenu-setup-v0.3.0.exe` if installer is accepted;
+  - `SHA256SUMS.txt`.
+- Publish GitHub Release with release notes/changelog.
+DoD:
+- GitHub Release exists at `v0.3.0`.
+- Assets are uploaded and checksums match.
+- README/INSTALL links point to release flow.
+Validation:
+- release script output;
+- `gh release view v0.3.0`;
+- checksum verification against uploaded assets if feasible.
+Files likely touched:
+- `Cargo.toml`
+- `CHANGELOG.md`
+- possibly release notes under `dist/` not committed
+- `STATE.md`
+Risk: high
+Depends on:
+- T085
+Notes:
+- Do not execute without explicit user confirmation.
+
+### T087 — Specify update checker and startup prompt UX
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 03:00
+Last update: 2026-05-07 03:15
+Scope:
+- Document updater UX and security contract before implementation.
+- Define startup notice behavior:
+  - show update availability on rMenu open if cached latest version is newer;
+  - `Enter` installs;
+  - `Ctrl+Enter` opens release changelog;
+  - any other key dismisses for current open only and continues normal input.
+- Define cache and check cadence under `C:\rMenuData\state\updates.json`.
+- Define GitHub Releases API metadata and SHA256 verification flow.
+- Define no silent updates in MVP.
+DoD:
+- Updater spec is documented and accepted in docs/DECISIONS.
+- Implementation tasks T088-T093 are still valid against the spec.
+Validation:
+- Documentation task; `git diff --check`.
+Files likely touched:
+- `DECISIONS.md`
+- `README.md`
+- `INSTALL.md`
+- maybe `docs/update-workflow.md`
+- `STATE.md`
+Risk: low
+Depends on:
+- T083
+Notes:
+- This can proceed before public v0.3.0 publish, but full end-to-end update needs at least one real release.
+- Added `docs/update-workflow.md` and DEC-013 with the non-intrusive explicit update UX and checksum security contract.
+
+### T088 — Implement GitHub release update check and cache
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 03:15
+Last update: 2026-05-07 03:35
+Scope:
+- Add update-checking code that fetches latest GitHub Release metadata for `SynrgStudio/rmenu`.
+- Parse latest semver/tag, release URL, assets, and checksum asset.
+- Cache results under `<data_dir>\state\updates.json`.
+- Avoid blocking hot rMenu open; check in daemon/background or with stale cache rules.
+- Add `/update` or equivalent forced check entry point if needed for testing.
+DoD:
+- Current version is compared against latest release version correctly.
+- Cache prevents network request on every launcher open.
+- Failure to check updates never prevents rMenu opening.
+- Tests cover version compare and cache parse/write.
+Validation:
+- `cargo fmt --all`
+- `cargo test`
+- `cargo check`
+Files likely touched:
+- new `src/update_check.rs`
+- `src/settings.rs`
+- `src/daemon_main.rs`
+- `src/main.rs`
+- `src/ui_win32.rs`
+- `STATE.md`
+Risk: medium
+Depends on:
+- T087
+Notes:
+- Prefer source-driven implementation for GitHub API response shape.
+- Added `src/update_check.rs` with GitHub latest-release metadata parsing, file/HTTP fetch support, data-root cache roundtrip, and numeric version comparison. No hot UI path calls it yet.
+
+### T089 — Add non-intrusive startup update notice UI
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 03:35
+Last update: 2026-05-07 04:00
+Scope:
+- Add a startup notice state to the rMenu UI.
+- Render update prompt when cached update is available.
+- Implement key handling:
+  - `Enter` starts install flow;
+  - `Ctrl+Enter` opens GitHub Release/changelog URL;
+  - any other key dismisses notice for this open and continues normal rMenu behavior.
+- Ensure notice does not pollute launcher history or module queries.
+DoD:
+- Update prompt appears only when update cache says newer version exists.
+- Any normal key dismisses the prompt and user can keep using rMenu immediately.
+- `Ctrl+Enter` opens release page without installing.
+- Tests cover notice state transitions where practical.
+Validation:
+- `cargo fmt --all`
+- `cargo test`
+- `cargo check`
+- manual UI smoke with fake cached update.
+Files likely touched:
+- `src/app_state.rs`
+- `src/ui_win32.rs`
+- `src/update_check.rs`
+- `README.md`
+- `STATE.md`
+Risk: medium
+Depends on:
+- T088
+Notes:
+- This is UX-sensitive; keep it minimal and reversible.
+- Added startup update notice from cached metadata, Ctrl+Enter changelog handling, any-key session dismissal, and Enter handoff to future `rmenu-updater.exe` with recoverable error if missing.
+
+### T090 — Add `rmenu-updater.exe` install helper
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 04:25
+Last update: 2026-05-07 05:15
+Scope:
+- Add separate `rmenu-updater` binary.
+- Implement install flow:
+  - download installer asset;
+  - download/read checksum asset;
+  - verify SHA256;
+  - request `rmenu-daemon --quit`;
+  - wait for rMenu/daemon processes to exit where needed;
+  - run installer with silent/passive flags;
+  - optionally restart daemon after install.
+- Ensure updater logs under `<data_dir>\state\updates\` or `%APPDATA%\rmenu`.
+DoD:
+- Updater can install from a local/file URL or test fixture without replacing current dev binary during tests.
+- Hash mismatch aborts install.
+- Daemon quit command is issued before installer runs.
+- `Cargo.toml` declares `rmenu-updater` binary.
+Validation:
+- `cargo fmt --all`
+- `cargo test`
+- `cargo check`
+- local dry-run/smoke with fake asset and checksum.
+Files likely touched:
+- `Cargo.toml`
+- `src/updater_main.rs`
+- `src/update_check.rs`
+- `src/daemon_main.rs` if helper reuse needed
+- `STATE.md`
+Risk: high
+Depends on:
+- T089
+Notes:
+- Do not run a real installer in automated tests.
+- Added `rmenu-updater` binary with file/http download support, SHA256 verification, daemon quit, installer launch, restart attempt, and dry-run fixture validation.
+
+### T091 — Wire update prompt Enter action to updater
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 04:55
+Last update: 2026-05-07 05:15
+Scope:
+- Connect startup prompt `Enter` to `rmenu-updater.exe` with cached release metadata.
+- Close current rMenu UI after spawning updater.
+- Surface download/install start feedback before close when feasible.
+- Add `/update install` or equivalent manual trigger if useful.
+DoD:
+- Pressing `Enter` on update prompt launches updater with expected args.
+- Missing updater binary produces recoverable feedback, not crash.
+- Pressing any other key still dismisses prompt and continues normal use.
+Validation:
+- `cargo fmt --all`
+- `cargo test`
+- `cargo check`
+- manual fake-update UI smoke.
+Files likely touched:
+- `src/ui_win32.rs`
+- `src/update_check.rs`
+- `src/updater_main.rs`
+- `README.md`
+- `STATE.md`
+Risk: high
+Depends on:
+- T090
+Notes:
+- Keep install action explicit via Enter only.
+- Prompt Enter now passes cached release metadata and data-dir to `rmenu-updater.exe`; missing updater remains recoverable feedback.
+
+### T092 — Document updater operations and troubleshooting
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 04:55
+Last update: 2026-05-07 05:15
+Scope:
+- Document update prompt UX.
+- Document `/update` command if implemented.
+- Document cache/state files and logs.
+- Document checksum verification and unsigned-binary trust limits.
+- Add troubleshooting for failed downloads, hash mismatches, and installer failures.
+DoD:
+- README/INSTALL explain update behavior and how to bypass/manual update.
+- Release checklist includes updater smoke validation.
+Validation:
+- Documentation task; `git diff --check`.
+Files likely touched:
+- `README.md`
+- `INSTALL.md`
+- `RELEASE_CHECKLIST.md`
+- `docs/release/BINARY_SIGNING.md`
+- `STATE.md`
+Risk: low
+Depends on:
+- T091
+Notes:
+- Be explicit that MVP updater is user-confirmed, not silent.
+- Updated README/INSTALL/update workflow/release checklist/signing docs for updater operations and troubleshooting.
+
+### T093 — Manual updater end-to-end validation
+
+Status: blocked
+Claimed by:
+Started:
+Last update:
+Blocker:
+- Requires at least one published release and a newer test release/fixture to validate end-to-end safely.
+Scope:
+- Install older release.
+- Open rMenu and confirm update prompt appears from cached/latest release data.
+- Press any key and confirm normal usage continues.
+- Reopen and press `Ctrl+Enter`; confirm changelog opens.
+- Reopen and press `Enter`; confirm updater downloads, verifies, stops daemon, runs installer, and relaunches daemon if configured.
+- Confirm version after update.
+DoD:
+- User accepts updater behavior.
+- Any release/update quirks are documented or queued.
+Validation:
+- manual Windows release-to-release update validation.
+Files likely touched:
+- `STATE.md`
+- docs if quirks are found
+Risk: high
+Depends on:
+- T092
+Notes:
+- This is intentionally blocked until release artifacts exist.

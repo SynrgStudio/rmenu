@@ -12,6 +12,8 @@ mod rtasks_companion;
 mod settings;
 mod sources;
 mod ui_win32;
+#[allow(dead_code)]
+mod update_check;
 
 use app_state::{AppState, LauncherItem, LauncherSource};
 use atty;
@@ -26,6 +28,7 @@ use std::{
     time::Instant,
 };
 use ui_win32::{measure_ui_latencies, UiLatencyMetrics};
+use update_check::{is_newer_version, read_updates_cache};
 
 fn p95_duration_ms(samples: &mut [u128]) -> u128 {
     if samples.is_empty() {
@@ -43,6 +46,20 @@ fn estimated_dataset_bytes(items: &[LauncherItem]) -> usize {
         .iter()
         .map(|item| item.label.len() + item.target.len())
         .sum()
+}
+
+fn startup_update_notice(cli_data_dir: Option<&str>) -> Option<app_state::StartupUpdateNotice> {
+    let cache = read_updates_cache(cli_data_dir).ok()?;
+    if !is_newer_version(&cache.latest_version, env!("CARGO_PKG_VERSION")) {
+        return None;
+    }
+    Some(app_state::StartupUpdateNotice {
+        version: cache.latest_version,
+        release_url: cache.release_url,
+        installer_asset_url: cache.installer_asset_url,
+        checksums_asset_url: cache.checksums_asset_url,
+        data_dir: cli_data_dir.map(ToOwned::to_owned),
+    })
 }
 
 fn print_metrics(
@@ -228,6 +245,7 @@ fn main() -> windows::core::Result<()> {
         rtasks_status: None,
         rtasks_priority: None,
         rmods: Default::default(),
+        startup_update_notice: startup_update_notice(cmd_options.data_dir.as_deref()),
     };
 
     let case_sensitive = app_config.behavior.case_sensitive;

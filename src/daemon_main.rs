@@ -23,6 +23,8 @@ mod settings;
 mod sources;
 #[cfg(not(test))]
 mod ui_win32;
+#[allow(dead_code)]
+mod update_check;
 
 use std::env;
 use std::ffi::OsStr;
@@ -49,7 +51,11 @@ use rtasks_companion::{RtasksCommand, RtasksCompanion};
 use settings::{CmdOptions, RmenuConfig};
 #[cfg(not(test))]
 use sources::load_launcher_items;
+#[cfg(not(test))]
+use update_check::{is_newer_version, read_updates_cache};
 use windows::core::PCWSTR;
+#[cfg(not(test))]
+use windows::Win32::Foundation::POINT;
 #[cfg(not(test))]
 use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
 use windows::Win32::Foundation::{ERROR_SUCCESS, HWND, LPARAM, LRESULT, WPARAM};
@@ -66,21 +72,34 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VK_F1, VK_F10, VK_F11, VK_F12,
     VK_F2, VK_F3, VK_F4, VK_F5, VK_F6, VK_F7, VK_F8, VK_F9, VK_SPACE,
 };
+#[cfg(not(test))]
+use windows::Win32::UI::Shell::{
+    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+};
+#[cfg(not(test))]
+use windows::Win32::UI::WindowsAndMessaging::{
+    AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, LoadIconW, SetForegroundWindow,
+    TrackPopupMenu, IDI_APPLICATION, MF_STRING, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_COMMAND,
+    WM_CONTEXTMENU, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowExW, FindWindowW, PostMessageW,
-    PostQuitMessage, RegisterClassW, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE,
+    PostQuitMessage, RegisterClassW, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_CLOSE,
     WM_DESTROY, WNDCLASSW,
 };
 #[cfg(not(test))]
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, GetForegroundWindow, GetMessageW, IsWindow, SetForegroundWindow,
-    TranslateMessage, MSG, WM_HOTKEY,
+    DispatchMessageW, GetForegroundWindow, GetMessageW, IsWindow, TranslateMessage, MSG, WM_HOTKEY,
 };
 
 const DAEMON_CLASS_NAME: &str = "rmenu_daemon_window";
 const DAEMON_MUTEX_NAME: &str = "Local\\rmenu-daemon";
 const HOTKEY_ID: i32 = 1;
 const RTASKS_PANEL_HOTKEY_ID: i32 = 2;
+const TRAY_ICON_ID: u32 = 1;
+const TRAY_MENU_OPEN_ID: usize = 1001;
+const TRAY_MENU_QUIT_ID: usize = 1002;
+const WM_DAEMON_TRAY: u32 = WM_APP + 1;
 const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const RUN_VALUE_NAME: &str = "rmenu-daemon";
 #[cfg(not(test))]
@@ -446,6 +465,21 @@ fn prepare_rmenu(
 }
 
 #[cfg(not(test))]
+fn startup_update_notice(cli_data_dir: Option<&str>) -> Option<app_state::StartupUpdateNotice> {
+    let cache = read_updates_cache(cli_data_dir).ok()?;
+    if !is_newer_version(&cache.latest_version, env!("CARGO_PKG_VERSION")) {
+        return None;
+    }
+    Some(app_state::StartupUpdateNotice {
+        version: cache.latest_version,
+        release_url: cache.release_url,
+        installer_asset_url: cache.installer_asset_url,
+        checksums_asset_url: cache.checksums_asset_url,
+        data_dir: cli_data_dir.map(ToOwned::to_owned),
+    })
+}
+
+#[cfg(not(test))]
 fn initial_app_state(prepared: &PreparedRmenu) -> AppState {
     AppState {
         current_input: String::new(),
@@ -463,6 +497,7 @@ fn initial_app_state(prepared: &PreparedRmenu) -> AppState {
         rtasks_status: None,
         rtasks_priority: None,
         rmods: Default::default(),
+        startup_update_notice: startup_update_notice(prepared.cmd_options.data_dir.as_deref()),
     }
 }
 
@@ -532,6 +567,23 @@ unsafe extern "system" fn daemon_window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     match msg {
+        #[cfg(not(test))]
+        WM_DAEMON_TRAY => {
+            let tray_event = lparam.0 as u32;
+            log_line(&format!("tray event message={tray_event}"));
+            if tray_event == WM_LBUTTONDBLCLK || tray_event == WM_LBUTTONUP {
+                PostMessageW(hwnd, WM_COMMAND, WPARAM(TRAY_MENU_OPEN_ID), LPARAM(0));
+            } else if tray_event == WM_RBUTTONUP
+                || tray_event == WM_RBUTTONDOWN
+                || tray_event == WM_CONTEXTMENU
+            {
+                log_line("showing tray menu from window proc");
+                if let Some(command) = show_tray_menu(hwnd) {
+                    PostMessageW(hwnd, WM_COMMAND, WPARAM(command), LPARAM(0));
+                }
+            }
+            LRESULT(0)
+        }
         WM_CLOSE => {
             DestroyWindow(hwnd);
             LRESULT(0)
@@ -733,6 +785,102 @@ fn force_kill_rsnip_processes() {
     force_kill_processes("rsnip.exe");
 }
 
+#[cfg(not(test))]
+fn copy_wide_truncated<const N: usize>(target: &mut [u16; N], value: &str) {
+    let wide = to_wstring(value);
+    let len = wide.len().saturating_sub(1).min(N.saturating_sub(1));
+    target[..len].copy_from_slice(&wide[..len]);
+    target[len] = 0;
+}
+
+#[cfg(not(test))]
+fn tray_icon_data(hwnd: HWND) -> Result<NOTIFYICONDATAW, String> {
+    let resource_name = to_wstring("IDI_RMENU");
+    let icon = unsafe {
+        LoadIconW(
+            GetModuleHandleW(None).map_err(|err| err.to_string())?,
+            PCWSTR(resource_name.as_ptr()),
+        )
+    }
+    .or_else(|_| unsafe { LoadIconW(None, IDI_APPLICATION) })
+    .map_err(|err| err.to_string())?;
+    let mut data = NOTIFYICONDATAW {
+        cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+        hWnd: hwnd,
+        uID: TRAY_ICON_ID,
+        uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
+        uCallbackMessage: WM_DAEMON_TRAY,
+        hIcon: icon,
+        ..Default::default()
+    };
+    copy_wide_truncated(&mut data.szTip, "rMenu daemon");
+    Ok(data)
+}
+
+#[cfg(not(test))]
+fn add_tray_icon(hwnd: HWND) -> Result<(), String> {
+    let data = tray_icon_data(hwnd)?;
+    let added = unsafe { Shell_NotifyIconW(NIM_ADD, &data) };
+    if !added.as_bool() {
+        return Err("Shell_NotifyIconW(NIM_ADD) failed".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn delete_tray_icon(hwnd: HWND) {
+    match tray_icon_data(hwnd) {
+        Ok(data) => {
+            let _ = unsafe { Shell_NotifyIconW(NIM_DELETE, &data) };
+        }
+        Err(err) => log_line(&format!("failed to build tray icon data for delete: {err}")),
+    }
+}
+
+#[cfg(not(test))]
+fn show_tray_menu(hwnd: HWND) -> Option<usize> {
+    let menu = unsafe { CreatePopupMenu() }.ok()?;
+    let open = to_wstring("Open rMenu");
+    let quit = to_wstring("Quit rMenu daemon");
+    unsafe {
+        let _ = AppendMenuW(menu, MF_STRING, TRAY_MENU_OPEN_ID, PCWSTR(open.as_ptr()));
+        let _ = AppendMenuW(menu, MF_STRING, TRAY_MENU_QUIT_ID, PCWSTR(quit.as_ptr()));
+    }
+
+    let mut point = POINT::default();
+    if !unsafe { GetCursorPos(&mut point) }.as_bool() {
+        unsafe {
+            let _ = DestroyMenu(menu);
+        }
+        return None;
+    }
+
+    unsafe {
+        let _ = SetForegroundWindow(hwnd);
+    }
+    let command = unsafe {
+        TrackPopupMenu(
+            menu,
+            TPM_RIGHTBUTTON | TPM_RETURNCMD,
+            point.x,
+            point.y,
+            0,
+            hwnd,
+            None,
+        )
+    };
+    unsafe {
+        let _ = DestroyMenu(menu);
+    }
+    let result = if command.0 == 0 {
+        None
+    } else {
+        Some(command.0 as usize)
+    };
+    log_line(&format!("tray menu command={result:?}"));
+    result
+}
+
 fn create_daemon_window() -> Result<HWND, String> {
     let class_name = to_wstring(DAEMON_CLASS_NAME);
     let instance = unsafe { GetModuleHandleW(None).map_err(|err| err.to_string())? };
@@ -755,7 +903,7 @@ fn create_daemon_window() -> Result<HWND, String> {
             0,
             0,
             0,
-            HWND_MESSAGE,
+            None,
             None,
             instance,
             None,
@@ -785,6 +933,11 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
 
     let hotkey = parse_hotkey(&options.hotkey)?;
     let hwnd = create_daemon_window()?;
+    if let Err(err) = add_tray_icon(hwnd) {
+        log_line(&format!("failed to add tray icon: {err}"));
+    } else {
+        log_line("tray icon added");
+    }
     let registered = unsafe { RegisterHotKey(hwnd, HOTKEY_ID, hotkey.modifiers, hotkey.vk) };
     if !registered.as_bool() {
         return Err(format!("failed to register hotkey {}", options.hotkey));
@@ -831,7 +984,21 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
             break;
         }
 
-        if msg.message == WM_HOTKEY && msg.wParam.0 == HOTKEY_ID as usize {
+        if msg.message == WM_COMMAND {
+            match msg.wParam.0 & 0xffff {
+                TRAY_MENU_OPEN_ID => {
+                    let hotkey_received_at = Instant::now();
+                    rmenu_open_count = rmenu_open_count.saturating_add(1);
+                    runtime =
+                        show_warm_rmenu(&prepared, runtime, rmenu_open_count, hotkey_received_at);
+                    resident_helpers.sync(runtime.external_descriptors());
+                }
+                TRAY_MENU_QUIT_ID => unsafe {
+                    PostMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
+                },
+                _ => {}
+            }
+        } else if msg.message == WM_HOTKEY && msg.wParam.0 == HOTKEY_ID as usize {
             let hotkey_received_at = Instant::now();
             rmenu_open_count = rmenu_open_count.saturating_add(1);
             runtime = show_warm_rmenu(&prepared, runtime, rmenu_open_count, hotkey_received_at);
@@ -880,6 +1047,7 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
         }
     }
 
+    delete_tray_icon(hwnd);
     resident_helpers.stop_all();
     stop_rsnip_daemon(active_rsnip);
     stop_rtasks_daemon(active_rtasks);
