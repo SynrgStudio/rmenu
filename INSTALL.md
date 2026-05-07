@@ -163,7 +163,19 @@ Module/user state lives under:
 C:\rMenuData\state
 ```
 
-Use `/rmods` in rMenu to install registry packages into the data root. Existing `--modules-dir` and `RMENU_MODULES_DIR` overrides remain available for development and debugging.
+Use `/rmods` in rMenu to install registry packages into the data root. `/rmods` is the unified extension hub for:
+
+- `rmod` single-file modules;
+- `rpack` folder modules/helpers;
+- `companion` native apps such as RSnip and RTasks.
+
+Companions install under:
+
+```text
+C:\rMenuData\companions
+```
+
+The rMenu installer does not bundle RSnip or RTasks in this wave. Install/update them from `/rmods`; `/install rsnip` and `/install rtasks` remain compatibility commands. Existing `--modules-dir` and `RMENU_MODULES_DIR` overrides remain available for development and debugging.
 
 The release artifact may include examples under:
 

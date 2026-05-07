@@ -111,6 +111,7 @@ pub struct RmodsUiItem {
     pub sha256: String,
     pub size: u64,
     pub files: Vec<crate::rmods_registry::RmodsRegistryFile>,
+    pub companion_executable: String,
     pub status: RmodsInstallStatusView,
     pub pending_action: RmodsPendingAction,
 }

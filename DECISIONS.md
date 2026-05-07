@@ -387,3 +387,35 @@ Updates are not installed silently in the MVP. Installation is delegated to a se
 - Network update checks should happen in background/daemon paths or through explicit forced checks, not directly in the hot launcher open path.
 - A failed update check or failed install must be recoverable and logged.
 - SHA256 verification is required before installer execution; Authenticode signing remains future hardening.
+
+---
+
+## DEC-014 — `/rmods` is the unified extension hub for modules and companions
+
+Status: Accepted
+Date: 2026-05-07
+
+### Context
+
+RSnip and RTasks are native companion applications, not ordinary JavaScript modules. They still need the same user-facing distribution lifecycle as rMods: discovery, install, update, uninstall, checksum verification, and data-root awareness.
+
+Adding a separate `/companions` UI would duplicate registry, filtering, status, and install logic. Bundling companions directly into the rMenu installer would make the installer a package manager and would make portable installs weaker.
+
+### Decision
+
+`/rmods` is the unified rMenu extension hub. The registry supports explicit package kinds:
+
+- `rmod`: single-file module package installed under `<data_dir>\modules`;
+- `rpack`: folder module package installed under `<data_dir>\modules`;
+- `companion`: native managed application installed under `<data_dir>\companions\<id>`.
+
+Companion entries must be visually distinct in `/rmods` with a `COMPANION` badge/tone and copy that says companion install/update/remove. The rMenu installer remains simple: install rMenu, preserve/select the data root, and optionally start the daemon. It does not bundle RSnip or RTasks in this wave.
+
+Existing `/install rsnip` and `/install rtasks` commands may remain as temporary compatibility aliases, but the primary UX is `/rmods`.
+
+### Consequences
+
+- Users have one place to manage extensions.
+- rMenu keeps installer responsibilities small.
+- Companion package metadata must include enough information for secure install and clear display.
+- Native companion runtime behavior remains IPC-backed; installing via `/rmods` does not turn companions into modules.

@@ -16,7 +16,7 @@ use crate::ranking::update_matching_items_with_dataset;
 use crate::rmods_registry::{
     download_verify_and_install_rmod, fetch_default_registry, install_status_for,
     read_registry_cache, scan_installed_rmods, uninstall_rmod, RmodsInstallStatus,
-    RmodsRegistryItem, DEFAULT_RMODS_REGISTRY_URL,
+    RmodsRegistryItem, DEFAULT_RMODS_REGISTRY_URL, RMODS_PACKAGE_KIND_COMPANION,
 };
 use crate::rsnip_companion::install_rsnip_latest;
 use crate::rtasks_companion::{
@@ -582,6 +582,7 @@ fn update_rmods_items(app_state: &mut AppState, force_refresh: bool) {
                         sha256: item.sha256,
                         size: item.size,
                         files: item.files,
+                        companion_executable: item.companion_executable,
                         status,
                         pending_action: RmodsPendingAction::None,
                     }
@@ -636,7 +637,8 @@ fn render_rmods_matching_items(app_state: &mut AppState) {
 
             let checkbox = rmods_checkbox(item.status, item.pending_action);
             let status = rmods_status_label(item.status);
-            let label = format!("{checkbox} {} {}", item.name, item.version);
+            let kind_badge = rmods_kind_badge(&item.kind);
+            let label = format!("{checkbox} {kind_badge}{} {}", item.name, item.version);
             let mut launcher_item = LauncherItem::new(
                 label,
                 format!("rmods:{}", item.id),
@@ -645,7 +647,12 @@ fn render_rmods_matching_items(app_state: &mut AppState) {
             launcher_item.trailing_badge = Some(status.to_string());
             launcher_item.trailing_badge_tone = rmods_status_tone(item.status);
             launcher_item.trailing_hint = if item.description.trim().is_empty() {
-                Some("Space mark | F5/Ctrl+R refresh | Ctrl+U updates".to_string())
+                Some(rmods_item_hint(item))
+            } else if item.kind == RMODS_PACKAGE_KIND_COMPANION {
+                Some(format!(
+                    "{} | installs to <data_dir>\\companions\\{}",
+                    item.description, item.id
+                ))
             } else {
                 Some(item.description.clone())
             };
@@ -677,6 +684,25 @@ fn render_rmods_matching_items(app_state: &mut AppState) {
         app_state.selected_index = app_state.matching_items.len().saturating_sub(1);
     }
     ensure_selection_visible(app_state, 10);
+}
+
+fn rmods_kind_badge(kind: &str) -> &'static str {
+    if kind == RMODS_PACKAGE_KIND_COMPANION {
+        "[COMPANION] "
+    } else {
+        ""
+    }
+}
+
+fn rmods_item_hint(item: &RmodsUiItem) -> String {
+    if item.kind == RMODS_PACKAGE_KIND_COMPANION {
+        format!(
+            "Space mark companion | F5/Ctrl+R refresh | target <data_dir>\\companions\\{}",
+            item.id
+        )
+    } else {
+        "Space mark | F5/Ctrl+R refresh | Ctrl+U updates".to_string()
+    }
 }
 
 fn rmods_badge_tone(item: &LauncherItem) -> Option<LauncherItemTone> {
@@ -860,6 +886,7 @@ fn rmods_registry_item_from_ui(item: &RmodsUiItem) -> RmodsRegistryItem {
         sha256: item.sha256.clone(),
         size: item.size,
         files: item.files.clone(),
+        companion_executable: item.companion_executable.clone(),
         tags: Vec::new(),
         requires_rmenu: None,
     }
@@ -2311,11 +2338,11 @@ mod tests {
     use super::{
         compute_row_zones, dismiss_startup_update_notice, find_quick_select_index,
         normalize_quick_select_items, render_startup_update_notice, rmods_badge_tone,
-        rmods_status_tone,
+        rmods_item_hint, rmods_kind_badge, rmods_status_tone,
     };
     use crate::app_state::{
         AppState, LauncherItem, LauncherItemTone, LauncherSource, RmodsInstallStatusView,
-        StartupUpdateNotice,
+        RmodsPendingAction, RmodsUiItem, StartupUpdateNotice,
     };
 
     #[test]
@@ -2412,6 +2439,28 @@ mod tests {
             rmods_status_tone(RmodsInstallStatusView::UpdateAvailable),
             Some(LauncherItemTone::Warning)
         );
+    }
+
+    #[test]
+    fn rmods_companion_entries_have_distinct_badge_and_hint() {
+        let item = RmodsUiItem {
+            id: "rsnip".to_string(),
+            name: "RSnip".to_string(),
+            version: "0.1.2".to_string(),
+            description: "Native screenshot companion".to_string(),
+            kind: crate::rmods_registry::RMODS_PACKAGE_KIND_COMPANION.to_string(),
+            download_url: "https://example.test/rsnip.exe".to_string(),
+            base_url: String::new(),
+            sha256: "4701988ff6438a0e76313559cef74201c5b5065d7e429e608745c5b9c9ab910f".to_string(),
+            size: 1,
+            files: Vec::new(),
+            companion_executable: "rsnip.exe".to_string(),
+            status: RmodsInstallStatusView::NotInstalled,
+            pending_action: RmodsPendingAction::None,
+        };
+
+        assert_eq!(rmods_kind_badge(&item.kind), "[COMPANION] ");
+        assert!(rmods_item_hint(&item).contains("<data_dir>\\companions\\rsnip"));
     }
 
     #[test]

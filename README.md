@@ -191,7 +191,13 @@ See `docs/companion-and-rmods-workflow.md` for the full companion, `/rmods`, `rp
 
 ### `/rmods` registry workflow
 
-rMenu includes a core-owned `/rmods` command for installing `.rmod` single-file modules and `rpack` folder modules from a GitHub registry repository. The registry repository layout is:
+rMenu includes a core-owned `/rmods` command for installing extensions from a GitHub registry repository. Package kinds are explicit:
+
+- `rmod`: single-file JavaScript module;
+- `rpack`: folder JavaScript module/helper package;
+- `companion`: native managed app such as RSnip or RTasks.
+
+The registry repository layout is:
 
 ```text
 rmenu-rmods/
@@ -203,6 +209,9 @@ rmenu-rmods/
       module.js
       config.json
       README.md
+  companions/
+    rsnip.json
+    rtasks.json
   registry.json
   scripts/
     generate-registry.*
@@ -211,9 +220,9 @@ rmenu-rmods/
       update-registry.yml
 ```
 
-`registry.json` is generated automatically by GitHub Actions from `modules/*.rmod` and `rpacks/*` folders; it is not edited by hand. `/rmods` fetches that generated registry, shows available/installed/updateable modules, verifies SHA-256 before install, installs atomically into `<data_dir>\modules`, and reloads modules.
+`registry.json` is generated automatically by GitHub Actions from `modules/*.rmod`, `rpacks/*`, and `companions/*.json`; it is not edited by hand. `/rmods` fetches that generated registry, shows available/installed/updateable packages, verifies SHA-256 before install, installs modules under `<data_dir>\modules`, installs companions under `<data_dir>\companions`, and refreshes runtime state.
 
-Some rpacks include resident native helpers. Treat those installs as trust decisions because helpers may use OS integrations such as global hooks. The `/rmods` installed files still land under `<data_dir>\modules`; mutable helper/user state belongs under `<data_dir>\state\modules\<module-name>`.
+Companion entries are shown with a `COMPANION` badge in `/rmods`. RSnip and RTasks should be installed/updated there; `/install rsnip` and `/install rtasks` are compatibility commands during the transition. Some rpacks include resident native helpers. Treat those installs as trust decisions because helpers may use OS integrations such as global hooks. Module package files land under `<data_dir>\modules`; companion binaries land under `<data_dir>\companions`; mutable helper/user state belongs under `<data_dir>\state\modules\<module-name>`.
 
 Current controls:
 

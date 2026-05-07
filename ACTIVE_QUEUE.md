@@ -1,8 +1,8 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-07 05:20
-planned_at: 2026-05-07 01:35
+updated_at: 2026-05-07 08:05
+planned_at: 2026-05-07 07:15
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -127,6 +127,21 @@ Replanned 2026-05-07 01:35 after resident helpers and `/rmods` validation:
   - use GitHub Releases as source of truth;
   - verify release asset SHA256 before running installer;
   - use a separate `rmenu-updater.exe` process so running binaries can be replaced safely.
+
+
+
+Replanned 2026-05-07 07:15 after v0.3.0 release and companion distribution decision:
+
+- v0.3.0 has been published, including installer, systray daemon controls, custom tray icon, and update foundation.
+- The installer should remain simple: install rMenu, preserve/select data root, start daemon; do not bundle RSnip/RTasks directly in the installer for now.
+- `/rmods` becomes the single extension marketplace/hub, not only a module list.
+- The registry should distinguish package types clearly:
+  - `rmod` / `rpack` for JS/module packages;
+  - `companion` for native managed apps such as RSnip and RTasks.
+- RSnip/RTasks should appear inside `/rmods` with an explicit `COMPANION` badge/tone and companion-specific actions/copy.
+- Companion installs remain under `<data_dir>\companions\<id>\` and user state remains under `<data_dir>\state\...` as already decided.
+- Existing `/install rsnip` and `/install rtasks` flows can be preserved temporarily, but the strategic UX should move to `/rmods` companion entries.
+- First executable task for this wave is T094.
 
 ## Queue
 
@@ -2851,12 +2866,10 @@ Notes:
 
 ### T086 — Publish v0.3.0 GitHub Release
 
-Status: blocked
-Claimed by:
-Started:
-Last update:
-Blocker:
-- Requires explicit user approval after T081-T085 validation.
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 07:00
+Last update: 2026-05-07 07:10
 Scope:
 - Finalize version/tag `v0.3.0`.
 - Produce final artifacts:
@@ -3120,3 +3133,283 @@ Depends on:
 - T092
 Notes:
 - This is intentionally blocked until release artifacts exist.
+
+### T094 — Specify `/rmods` companion package contract
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 07:25
+Last update: 2026-05-07 08:05
+Scope:
+- Extend the `/rmods` registry concept from "modules only" to "rMenu extensions".
+- Define the `companion` package kind and how it differs from `rmod` and `rpack`.
+- Specify required registry fields for companions:
+  - `id`, `name`, `version`, `description`, `kind: companion`;
+  - GitHub release or direct asset metadata;
+  - installer/extract strategy;
+  - executable path inside installed companion folder;
+  - SHA256/checksum expectations;
+  - optional commands/capabilities for display.
+- Define UX rules for companion entries in `/rmods`:
+  - visible `COMPANION` badge;
+  - distinct tone/color;
+  - install/update/uninstall labels use "companion", not "rMod";
+  - details show `<data_dir>\companions\<id>` destination.
+- Define migration policy for existing `/install rsnip` and `/install rtasks` commands.
+DoD:
+- Docs/decision describe companion registry semantics without ambiguity.
+- The spec states that the rMenu installer remains simple and does not bundle companions in this wave.
+- Follow-up implementation tasks can proceed without redesign.
+Validation:
+- Documentation/planning task; no code validation required.
+Files likely touched:
+- `DECISIONS.md`
+- `docs/rmods-registry.md`
+- `docs/companion-and-rmods-workflow.md`
+- `README.md`
+- `ACTIVE_QUEUE.md`
+- `STATE.md`
+Risk: medium
+Depends on:
+- T086
+Notes:
+- Keep naming clear: `/rmods` is the marketplace hub; `rpack` is a module package; `companion` is a native managed app.
+
+### T095 — Extend `SynrgStudio/rmods` registry generator for companion entries
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 08:05
+Last update: 2026-05-07 08:05
+Scope:
+- Add a first-party registry input format for companions in `C:\rmods`.
+- Add initial companion entries for:
+  - RSnip;
+  - RTasks.
+- Generate `registry.json` entries with `kind: companion` and all metadata from T094.
+- Keep existing `rmod`/`rpack` generation behavior unchanged.
+- Add validation that companion IDs, paths, URLs, sizes, and SHA256 values are safe and complete.
+DoD:
+- `C:\rmods` can generate a registry containing both module packages and companion packages.
+- RSnip and RTasks appear in the generated registry as `kind: companion`.
+- Existing rpack/rmod entries are not regressed.
+- Registry generation rejects malformed companion metadata.
+Validation:
+- Run the registry generator locally.
+- Inspect generated `registry.json` for RSnip/RTasks companion entries.
+- If tests exist or are added, run them.
+Files likely touched:
+- `C:\rmods\scripts\generate-registry.py`
+- `C:\rmods\README.md`
+- `C:\rmods\registry.json`
+- new companion metadata files under `C:\rmods`
+Risk: medium
+Depends on:
+- T094
+Notes:
+- Do not publish until rMenu parser support from T096 is ready or entries are guarded so current released rMenu fails safely.
+
+### T096 — Add rMenu registry parser/status support for `kind: companion`
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 08:05
+Last update: 2026-05-07 08:05
+Scope:
+- Extend `src/rmods_registry.rs` data types and validation for companion entries.
+- Preserve existing validation and install behavior for `rmod` and `rpack`.
+- Add companion installed-state calculation using `<data_dir>\companions\<id>\` and existing companion-specific discovery where available.
+- Represent statuses consistently:
+  - not installed;
+  - installed;
+  - update available;
+  - checksum/version mismatch;
+  - local newer if applicable.
+- Add tests for valid/invalid companion registry entries and status calculation.
+DoD:
+- rMenu accepts registry files containing `kind: companion`.
+- Invalid companion metadata is rejected with a clear recoverable error.
+- Installed RSnip/RTasks can be detected as companion entries.
+- Existing rmod/rpack tests still pass.
+Validation:
+- `cargo fmt --all`
+- `cargo test rmods`
+- `cargo check`
+Files likely touched:
+- `src/rmods_registry.rs`
+- `src/settings.rs` if data-dir helper exposure is needed
+- tests in existing Rust modules
+Risk: high
+Depends on:
+- T094
+Notes:
+- This task should not yet implement full install; only parse/status support.
+
+### T097 — Implement companion install/update/uninstall operations for `/rmods`
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 08:05
+Last update: 2026-05-07 08:05
+Scope:
+- Add secure install/update flow for companion packages from registry metadata.
+- Reuse existing RSnip/RTasks GitHub install logic where possible, but route through generic companion package operations.
+- Install to `<data_dir>\companions\<id>\` with staging and atomic replace where feasible.
+- Verify SHA256 before replacing an existing companion.
+- Implement uninstall that removes managed companion files without deleting unrelated user data unless explicitly designated as managed package files.
+- Restart/notify daemon companion lifecycle after install/update/uninstall when needed.
+DoD:
+- `/rmods` can install and update RSnip and RTasks from companion registry entries.
+- Hash mismatch aborts safely and preserves current install.
+- Uninstall removes the managed companion package and refreshes rMenu/daemon state.
+- Existing `/install rsnip` and `/install rtasks` either delegate to the same code path or are explicitly marked legacy.
+Validation:
+- `cargo fmt --all`
+- `cargo test companion` or targeted relevant tests
+- `cargo test rmods`
+- `cargo check`
+- local file:// companion fixture smoke if feasible
+Files likely touched:
+- `src/rmods_registry.rs`
+- `src/rsnip_companion.rs`
+- `src/rtasks_companion.rs`
+- `src/ui_win32.rs`
+- `src/daemon_main.rs`
+- `src/settings.rs`
+Risk: high
+Depends on:
+- T096
+Notes:
+- Avoid adding companion downloads to the installer. `/rmods` owns this lifecycle.
+
+### T098 — Render companion entries distinctly in `/rmods`
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 08:05
+Last update: 2026-05-07 08:05
+Scope:
+- Add a visible `COMPANION` badge/tone for companion entries in the `/rmods` list.
+- Keep existing installed/update status badge colors intact.
+- Adjust hint/details copy so companion actions say install/update/remove companion.
+- Ensure `/rmods <query>` filters companions and modules together.
+- Add UI tests for badge/tone mapping where feasible.
+DoD:
+- RSnip and RTasks are visually distinguishable from rpacks/rmods.
+- The user can still search one unified `/rmods` list.
+- Status badges and pending-change markers remain readable.
+Validation:
+- `cargo fmt --all`
+- `cargo test ui_win32::tests::rmods`
+- `cargo check`
+- manual visual smoke recommended after T097.
+Files likely touched:
+- `src/app_state.rs`
+- `src/ui_win32.rs`
+- `src/rmods_registry.rs` if display model changes are needed
+- docs screenshots/text if applicable
+Risk: medium
+Depends on:
+- T096
+Notes:
+- This is the UX distinction the user explicitly requested.
+
+### T099 — Migrate companion user workflow from `/install` to `/rmods`
+
+Status: done
+Claimed by: current-agent
+Started: 2026-05-07 08:05
+Last update: 2026-05-07 08:05
+Scope:
+- Update user-facing commands/docs so RSnip/RTasks installation is primarily done through `/rmods`.
+- Decide final behavior for `/install rsnip` and `/install rtasks`:
+  - temporary alias to matching `/rmods` companion install; or
+  - deprecated command with feedback pointing to `/rmods`.
+- Ensure existing native aliases remain unchanged:
+  - RSnip: `snip`, `rec`, `ocr`;
+  - RTasks: `tasks` panel and embedded `t ` capture.
+- Update troubleshooting for companion missing/unreachable/update cases.
+DoD:
+- README/INSTALL/docs say `/rmods` is the extension hub for modules and companions.
+- Existing users are not stranded if they try old `/install` commands.
+- RSnip/RTasks runtime behavior remains native IPC-backed after install.
+Validation:
+- Documentation task plus `cargo test` if command behavior changes.
+Files likely touched:
+- `README.md`
+- `INSTALL.md`
+- `docs/companion-and-rmods-workflow.md`
+- `docs/rmods-registry.md`
+- `src/ui_win32.rs` if `/install` behavior changes
+- `STATE.md`
+Risk: medium
+Depends on:
+- T097
+- T098
+Notes:
+- Preserve the simple installer decision in docs.
+
+### T100 — Publish companion registry updates and validate live `/rmods` feed
+
+Status: blocked
+Blocker:
+- Requires explicit approval to commit/push the `C:\rmods` registry changes and the matching rMenu changes.
+Claimed by: current-agent
+Started: 2026-05-07 08:05
+Last update: 2026-05-07 08:05
+Scope:
+- Push the `C:\rmods` registry/generator changes after rMenu supports companion entries.
+- Confirm GitHub Action regenerates `registry.json` successfully.
+- Confirm live raw registry includes RSnip and RTasks companion entries.
+- Confirm current released rMenu behavior is considered before exposing entries publicly.
+DoD:
+- Live registry contains valid RSnip/RTasks companion entries.
+- `/rmods` in local rMenu fetches the live registry and renders companion entries.
+- Any compatibility risk with v0.3.0 is documented or mitigated.
+Validation:
+- Local registry generation: OK.
+- GitHub Actions registry update: OK.
+- Live raw registry smoke: OK.
+- Local rMenu `/rmods` fetch smoke: OK.
+Files likely touched:
+- `C:\rmods` repo files
+- `STATE.md`
+Risk: high
+Depends on:
+- T095
+- T097
+- T098
+Notes:
+- Because v0.3.0 is public, avoid publishing registry entries that break the released parser. If needed, update rMenu first or make registry backward-safe.
+
+### T101 — Manual `/rmods` companion installation validation
+
+Status: blocked
+Blocker:
+- Requires T100 live registry publish and interactive Windows validation after companion entries are available.
+Claimed by:
+Started:
+Last update:
+Scope:
+- Open `/rmods` and confirm RSnip/RTasks appear with `COMPANION` badges.
+- Install/update RSnip from `/rmods` and confirm aliases:
+  - `snip`;
+  - `rec`;
+  - `ocr`.
+- Install/update RTasks from `/rmods` and confirm:
+  - `tasks` opens the panel;
+  - `t <text>` capture still works.
+- Uninstall/reinstall one companion and confirm daemon/runtime state refreshes without manual Task Manager cleanup.
+DoD:
+- User accepts companion install/update UX from `/rmods`.
+- Any defects are fixed or queued as follow-up tasks.
+Validation:
+- manual Windows UX validation.
+Files likely touched:
+- `STATE.md`
+- possible bugfix files if issues are found
+Risk: high
+Depends on:
+- T100
+Notes:
+- This is the manual acceptance gate for replacing standalone `/install` as the primary UX.

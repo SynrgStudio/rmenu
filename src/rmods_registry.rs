@@ -26,6 +26,7 @@ pub const RMODS_REGISTRY_CACHE_FILE: &str = "rmods-registry-cache.json";
 pub const RMODS_DOWNLOADS_DIR: &str = "downloads";
 pub const RMODS_PACKAGE_KIND_RMOD: &str = "rmod";
 pub const RMODS_PACKAGE_KIND_RPACK: &str = "rpack";
+pub const RMODS_PACKAGE_KIND_COMPANION: &str = "companion";
 pub const RMODS_MAX_PACKAGE_SIZE_BYTES: u64 = 10 * 1024 * 1024;
 pub const RMODS_MAX_RPACK_FILES: usize = 256;
 pub const RMODS_MAX_RPACK_TOTAL_SIZE_BYTES: u64 = 50 * 1024 * 1024;
@@ -53,6 +54,8 @@ pub struct RmodsRegistryItem {
     pub size: u64,
     #[serde(default)]
     pub files: Vec<RmodsRegistryFile>,
+    #[serde(default)]
+    pub companion_executable: String,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -202,67 +205,113 @@ pub fn scan_installed_rmods(
 ) -> Result<BTreeMap<String, RmodsLocalModule>, RmodsRegistryError> {
     let modules_dir = rmenu_data_dirs(cli_data_dir).modules_dir;
     let mut modules = BTreeMap::new();
-    if !modules_dir.exists() {
-        return Ok(modules);
-    }
-
     let installed_state = read_installed_state(cli_data_dir).unwrap_or_default();
 
-    for entry in fs::read_dir(modules_dir).map_err(io_error)? {
-        let path = entry.map_err(io_error)?.path();
-        if path.is_dir() {
-            if !path.join("module.toml").exists() {
+    if modules_dir.exists() {
+        for entry in fs::read_dir(modules_dir).map_err(io_error)? {
+            let path = entry.map_err(io_error)?.path();
+            if path.is_dir() {
+                if !path.join("module.toml").exists() {
+                    continue;
+                }
+                let descriptor = load_directory_descriptor(&path).map_err(|error| {
+                    RmodsRegistryError::RmodParse {
+                        path: path.clone(),
+                        message: format!("{error:?}"),
+                    }
+                })?;
+                let id_lc = descriptor.name.to_ascii_lowercase();
+                let sha256 = installed_state
+                    .modules
+                    .get(&descriptor.name)
+                    .filter(|installed| installed.kind == RMODS_PACKAGE_KIND_RPACK)
+                    .filter(|installed| installed.version == descriptor.version)
+                    .filter(|installed| installed.path == path)
+                    .map(|installed| installed.sha256.clone())
+                    .unwrap_or_else(|| sha256_directory(&path).unwrap_or_default());
+                modules.insert(
+                    id_lc,
+                    RmodsLocalModule {
+                        id: descriptor.name,
+                        version: descriptor.version,
+                        sha256,
+                        path,
+                        kind: RMODS_PACKAGE_KIND_RPACK.to_string(),
+                    },
+                );
                 continue;
             }
-            let descriptor = load_directory_descriptor(&path).map_err(|error| {
-                RmodsRegistryError::RmodParse {
-                    path: path.clone(),
-                    message: format!("{error:?}"),
-                }
-            })?;
-            let id_lc = descriptor.name.to_ascii_lowercase();
-            let sha256 = installed_state
-                .modules
-                .get(&descriptor.name)
-                .filter(|installed| installed.kind == RMODS_PACKAGE_KIND_RPACK)
-                .filter(|installed| installed.version == descriptor.version)
-                .filter(|installed| installed.path == path)
-                .map(|installed| installed.sha256.clone())
-                .unwrap_or_else(|| sha256_directory(&path).unwrap_or_default());
+            if path.extension().and_then(|value| value.to_str()) != Some("rmod") {
+                continue;
+            }
+            let content = fs::read_to_string(&path).map_err(io_error)?;
+            let descriptor =
+                parse_rmod(&content, path.to_string_lossy().to_string()).map_err(|error| {
+                    RmodsRegistryError::RmodParse {
+                        path: path.clone(),
+                        message: error.message(),
+                    }
+                })?;
+            let sha256 = sha256_file(&path)?;
             modules.insert(
-                id_lc,
+                descriptor.name.to_ascii_lowercase(),
                 RmodsLocalModule {
                     id: descriptor.name,
                     version: descriptor.version,
                     sha256,
                     path,
-                    kind: RMODS_PACKAGE_KIND_RPACK.to_string(),
+                    kind: RMODS_PACKAGE_KIND_RMOD.to_string(),
                 },
             );
+        }
+    }
+
+    for (id, installed) in installed_state.modules.iter() {
+        if installed.kind != RMODS_PACKAGE_KIND_COMPANION {
             continue;
         }
-        if path.extension().and_then(|value| value.to_str()) != Some("rmod") {
-            continue;
+        if installed.path.exists() {
+            modules.insert(
+                id.to_ascii_lowercase(),
+                RmodsLocalModule {
+                    id: id.clone(),
+                    version: installed.version.clone(),
+                    sha256: installed.sha256.clone(),
+                    path: installed.path.clone(),
+                    kind: RMODS_PACKAGE_KIND_COMPANION.to_string(),
+                },
+            );
         }
-        let content = fs::read_to_string(&path).map_err(io_error)?;
-        let descriptor =
-            parse_rmod(&content, path.to_string_lossy().to_string()).map_err(|error| {
-                RmodsRegistryError::RmodParse {
-                    path: path.clone(),
-                    message: error.message(),
-                }
-            })?;
-        let sha256 = sha256_file(&path)?;
-        modules.insert(
-            descriptor.name.to_ascii_lowercase(),
-            RmodsLocalModule {
-                id: descriptor.name,
-                version: descriptor.version,
-                sha256,
-                path,
-                kind: RMODS_PACKAGE_KIND_RMOD.to_string(),
-            },
-        );
+    }
+
+    let companions_dir = rmenu_data_dirs(cli_data_dir).companions_dir;
+    if companions_dir.exists() {
+        for entry in fs::read_dir(companions_dir).map_err(io_error)? {
+            let path = entry.map_err(io_error)?.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(id) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if modules.contains_key(&id.to_ascii_lowercase()) || !is_safe_module_id(id) {
+                continue;
+            }
+            let exe_path = path.join(format!("{id}.exe"));
+            if !exe_path.exists() {
+                continue;
+            }
+            modules.insert(
+                id.to_ascii_lowercase(),
+                RmodsLocalModule {
+                    id: id.to_string(),
+                    version: String::new(),
+                    sha256: sha256_file(&exe_path)?,
+                    path: exe_path,
+                    kind: RMODS_PACKAGE_KIND_COMPANION.to_string(),
+                },
+            );
+        }
     }
 
     Ok(modules)
@@ -411,6 +460,7 @@ pub fn uninstall_rmod(id: &str, cli_data_dir: Option<&str>) -> Result<bool, Rmod
     let dirs = rmenu_data_dirs(cli_data_dir);
     let rmod_path = dirs.modules_dir.join(format!("{id}.rmod"));
     let rpack_path = dirs.modules_dir.join(id);
+    let companion_path = dirs.companions_dir.join(id);
     let mut removed = false;
     if rmod_path.exists() {
         fs::remove_file(&rmod_path).map_err(io_error)?;
@@ -419,6 +469,16 @@ pub fn uninstall_rmod(id: &str, cli_data_dir: Option<&str>) -> Result<bool, Rmod
     if rpack_path.exists() {
         fs::remove_dir_all(&rpack_path).map_err(io_error)?;
         removed = true;
+    }
+    if companion_path.exists() {
+        if let Ok(state) = read_installed_state(cli_data_dir) {
+            if let Some(installed) = state.modules.get(id) {
+                if installed.kind == RMODS_PACKAGE_KIND_COMPANION && installed.path.exists() {
+                    fs::remove_file(&installed.path).map_err(io_error)?;
+                    removed = true;
+                }
+            }
+        }
     }
 
     let mut state = read_installed_state(cli_data_dir)?;
@@ -435,6 +495,9 @@ pub fn download_verify_and_install_rmod(
     validate_item(item)?;
     if item.kind == RMODS_PACKAGE_KIND_RPACK {
         return download_verify_and_install_rpack(item, cli_data_dir, source_registry);
+    }
+    if item.kind == RMODS_PACKAGE_KIND_COMPANION {
+        return download_verify_and_install_companion(item, cli_data_dir, source_registry);
     }
 
     let downloaded = download_rmod_to_temp(item, cli_data_dir)?;
@@ -653,6 +716,88 @@ fn install_verified_rpack(
     Ok(installed)
 }
 
+fn download_verify_and_install_companion(
+    item: &RmodsRegistryItem,
+    cli_data_dir: Option<&str>,
+    source_registry: &str,
+) -> Result<RmodsInstalledModule, RmodsRegistryError> {
+    let downloads_dir = rmods_downloads_dir(cli_data_dir);
+    fs::create_dir_all(&downloads_dir).map_err(io_error)?;
+    let downloaded = downloads_dir.join(format!("{}.companion.tmp", item.id));
+    let _ = fs::remove_file(&downloaded);
+    copy_or_download_url_to_file(&item.download_url, &downloaded)?;
+
+    let actual_size = fs::metadata(&downloaded).map_err(io_error)?.len();
+    if actual_size != item.size {
+        let _ = fs::remove_file(&downloaded);
+        return Err(RmodsRegistryError::InvalidSize {
+            id: item.id.clone(),
+            size: actual_size,
+        });
+    }
+    let actual_sha = sha256_file(&downloaded)?;
+    if actual_sha != item.sha256 {
+        let _ = fs::remove_file(&downloaded);
+        return Err(RmodsRegistryError::InvalidSha256 {
+            id: item.id.clone(),
+            sha256: actual_sha,
+        });
+    }
+
+    install_verified_companion(item, &downloaded, cli_data_dir, source_registry)
+}
+
+fn install_verified_companion(
+    item: &RmodsRegistryItem,
+    downloaded: &PathBuf,
+    cli_data_dir: Option<&str>,
+    source_registry: &str,
+) -> Result<RmodsInstalledModule, RmodsRegistryError> {
+    let dirs = rmenu_data_dirs(cli_data_dir);
+    let relative_exe = safe_relative_path(&item.companion_executable)?;
+    let companion_dir = dirs.companions_dir.join(&item.id);
+    let final_path = companion_dir.join(relative_exe);
+    if let Some(parent) = final_path.parent() {
+        fs::create_dir_all(parent).map_err(io_error)?;
+        fs::create_dir_all(companion_dir.join("config")).map_err(io_error)?;
+        fs::create_dir_all(companion_dir.join("state")).map_err(io_error)?;
+        fs::create_dir_all(companion_dir.join("logs")).map_err(io_error)?;
+    }
+
+    let staging_path = final_path.with_extension("installing");
+    let backup_path = final_path.with_extension("bak");
+    let _ = fs::remove_file(&staging_path);
+    fs::copy(downloaded, &staging_path).map_err(io_error)?;
+
+    if final_path.exists() {
+        let _ = fs::remove_file(&backup_path);
+        fs::rename(&final_path, &backup_path).map_err(io_error)?;
+    }
+
+    if let Err(error) = fs::rename(&staging_path, &final_path) {
+        if backup_path.exists() {
+            let _ = fs::rename(&backup_path, &final_path);
+        }
+        return Err(io_error(error));
+    }
+
+    let _ = fs::remove_file(&backup_path);
+    let _ = fs::remove_file(downloaded);
+
+    let installed = RmodsInstalledModule {
+        version: item.version.clone(),
+        sha256: item.sha256.clone(),
+        path: final_path,
+        kind: RMODS_PACKAGE_KIND_COMPANION.to_string(),
+        source_registry: source_registry.to_string(),
+        installed_at: current_timestamp_string(),
+    };
+    let mut state = read_installed_state(cli_data_dir)?;
+    state.modules.insert(item.id.clone(), installed.clone());
+    write_installed_state(cli_data_dir, &state)?;
+    Ok(installed)
+}
+
 fn rpack_file_url(item: &RmodsRegistryItem, path: &str) -> String {
     format!(
         "{}/{}",
@@ -833,13 +978,32 @@ fn validate_item(item: &RmodsRegistryItem) -> Result<(), RmodsRegistryError> {
         }
         RMODS_PACKAGE_KIND_RPACK => {
             validate_non_empty(&item.id, "base_url", &item.base_url)?;
-            if !item.download_url.trim().is_empty() {
+            if !item.download_url.trim().is_empty() || !item.companion_executable.trim().is_empty()
+            {
                 return Err(RmodsRegistryError::UnsupportedKind {
                     id: item.id.clone(),
-                    kind: "rpack with download_url".to_string(),
+                    kind: "rpack with non-rpack fields".to_string(),
                 });
             }
             validate_rpack_files(item)?;
+        }
+        RMODS_PACKAGE_KIND_COMPANION => {
+            validate_non_empty(&item.id, "download_url", &item.download_url)?;
+            validate_non_empty(&item.id, "companion_executable", &item.companion_executable)?;
+            if !item.base_url.trim().is_empty() || !item.files.is_empty() {
+                return Err(RmodsRegistryError::UnsupportedKind {
+                    id: item.id.clone(),
+                    kind: "companion with module package fields".to_string(),
+                });
+            }
+            if !is_valid_base_url(&item.download_url)
+                || safe_relative_path(&item.companion_executable).is_err()
+            {
+                return Err(RmodsRegistryError::InvalidDownloadUrl {
+                    id: item.id.clone(),
+                    url: item.download_url.clone(),
+                });
+            }
         }
         _ => {
             return Err(RmodsRegistryError::UnsupportedKind {
@@ -1023,6 +1187,33 @@ mod tests {
         assert_eq!(calculator.id, "calculator");
         assert_eq!(calculator.kind, "rmod");
         assert_eq!(calculator.size, 3021);
+    }
+
+    #[test]
+    fn rmods_parse_valid_companion_registry() {
+        let json = r#"{
+  "schema": 1,
+  "generated_at": "2026-05-07T00:00:00Z",
+  "modules": [
+    {
+      "id": "rsnip",
+      "name": "RSnip",
+      "version": "0.1.2",
+      "description": "Native screenshot, recording, and OCR companion.",
+      "kind": "companion",
+      "download_url": "https://github.com/SynrgStudio/rSnip/releases/latest/download/rsnip.exe",
+      "sha256": "4701988ff6438a0e76313559cef74201c5b5065d7e429e608745c5b9c9ab910f",
+      "size": 8909312,
+      "companion_executable": "rsnip.exe",
+      "tags": ["native", "companion"]
+    }
+  ]
+}"#;
+        let registry = parse_registry_json(json).expect("valid companion registry");
+        let companion = &registry.modules[0];
+        assert_eq!(companion.id, "rsnip");
+        assert_eq!(companion.kind, RMODS_PACKAGE_KIND_COMPANION);
+        assert_eq!(companion.companion_executable, "rsnip.exe");
     }
 
     #[test]
@@ -1217,6 +1408,7 @@ mod tests {
             sha256,
             size: source.metadata().expect("metadata").len(),
             files: Vec::new(),
+            companion_executable: String::new(),
             tags: Vec::new(),
             requires_rmenu: None,
         };
@@ -1252,6 +1444,7 @@ mod tests {
             sha256: sha256_directory(&source_dir).expect("hash rpack"),
             size,
             files,
+            companion_executable: String::new(),
             tags: Vec::new(),
             requires_rmenu: None,
         };
@@ -1287,6 +1480,81 @@ mod tests {
             size: 1,
         }];
         let error = validate_item(&item).expect_err("unsafe path should fail");
+        assert!(matches!(
+            error,
+            RmodsRegistryError::InvalidDownloadUrl { .. }
+        ));
+    }
+
+    #[test]
+    fn rmods_scan_detects_legacy_companion_without_installed_state() {
+        let root = std::env::temp_dir().join(format!(
+            "rmods-legacy-companion-scan-test-{}",
+            std::process::id()
+        ));
+        let companion_dir = root.join("companions").join("rsnip");
+        std::fs::create_dir_all(&companion_dir).expect("create companion dir");
+        let exe_path = companion_dir.join("rsnip.exe");
+        std::fs::write(&exe_path, b"legacy companion exe").expect("write companion exe");
+        let root_string = root.to_string_lossy().to_string();
+        let scanned = scan_installed_rmods(Some(&root_string)).expect("scan installed");
+        assert_eq!(scanned["rsnip"].kind, RMODS_PACKAGE_KIND_COMPANION);
+        assert_eq!(scanned["rsnip"].version, "");
+        assert_eq!(scanned["rsnip"].path, exe_path);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rmods_download_verify_and_install_companion_file_url() {
+        let root = std::env::temp_dir().join(format!(
+            "rmods-companion-install-test-{}",
+            std::process::id()
+        ));
+        let source_dir = root.join("source");
+        std::fs::create_dir_all(&source_dir).expect("create source dir");
+        let source = source_dir.join("rsnip.exe");
+        std::fs::write(&source, b"fake companion exe").expect("write source companion");
+        let sha256 = sha256_file(&source).expect("hash companion");
+        let item = RmodsRegistryItem {
+            id: "rsnip".to_string(),
+            name: "RSnip".to_string(),
+            version: "0.1.2".to_string(),
+            description: String::new(),
+            kind: RMODS_PACKAGE_KIND_COMPANION.to_string(),
+            download_url: format!("file://{}", source.display()),
+            base_url: String::new(),
+            sha256,
+            size: source.metadata().expect("metadata").len(),
+            files: Vec::new(),
+            companion_executable: "rsnip.exe".to_string(),
+            tags: Vec::new(),
+            requires_rmenu: None,
+        };
+        validate_item(&item).expect("valid companion item");
+        let root_string = root.to_string_lossy().to_string();
+        let installed =
+            download_verify_and_install_rmod(&item, Some(&root_string), DEFAULT_RMODS_REGISTRY_URL)
+                .expect("install companion");
+        assert_eq!(installed.kind, RMODS_PACKAGE_KIND_COMPANION);
+        assert_eq!(
+            installed.path,
+            root.join("companions").join("rsnip").join("rsnip.exe")
+        );
+        assert!(installed.path.exists());
+        let scanned = scan_installed_rmods(Some(&root_string)).expect("scan installed");
+        assert_eq!(scanned["rsnip"].kind, RMODS_PACKAGE_KIND_COMPANION);
+        assert!(uninstall_rmod("rsnip", Some(&root_string)).expect("uninstall companion"));
+        assert!(!installed.path.exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rmods_rejects_unsafe_companion_executable_path() {
+        let mut item = sample_item("bad-companion");
+        item.kind = RMODS_PACKAGE_KIND_COMPANION.to_string();
+        item.download_url = "https://example.test/bad-companion.exe".to_string();
+        item.companion_executable = "../bad.exe".to_string();
+        let error = validate_item(&item).expect_err("unsafe executable path should fail");
         assert!(matches!(
             error,
             RmodsRegistryError::InvalidDownloadUrl { .. }
@@ -1372,6 +1640,7 @@ mod tests {
             sha256: "de00cc81828884f32688d344099e8fb2553887d7d30fc652d0b3b1e0f5c7f227".to_string(),
             size: 1,
             files: Vec::new(),
+            companion_executable: String::new(),
             tags: Vec::new(),
             requires_rmenu: None,
         }

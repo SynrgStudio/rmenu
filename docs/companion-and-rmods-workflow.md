@@ -377,3 +377,39 @@ Behavior:
 - Escape cancels;
 - holding Shift enables precision mode at 8% mouse speed;
 - window avoids active-monitor edges.
+
+## Companion distribution through `/rmods`
+
+RSnip and RTasks are managed from `/rmods` as `companion` registry entries.
+
+This keeps the installer simple:
+
+- install rMenu binaries;
+- preserve or select the data root;
+- start the daemon if requested.
+
+The installer does not download RSnip or RTasks in this wave. Use `/rmods` to install or update them. Companion entries are distinguished from module packages by a `COMPANION` badge and companion-specific action text.
+
+Package meanings:
+
+```text
+rmod       single-file JavaScript module
+rpack      folder JavaScript module/helper package
+companion  native application managed by rMenu
+```
+
+Companion install targets:
+
+```text
+<data_dir>\companions\rsnip\rsnip.exe
+<data_dir>\companions\rtasks\rtasks.exe
+```
+
+Compatibility commands:
+
+```text
+/install rsnip
+/install rtasks
+```
+
+These may remain as aliases during the transition, but `/rmods` is the preferred management UI.

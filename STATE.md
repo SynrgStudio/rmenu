@@ -1,7 +1,7 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-07 06:50
+updated_at: 2026-05-07 08:05
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -2356,3 +2356,79 @@ Validation:
 Artifact ready:
 
 - `dist\installers\rmenu-setup-v0.3.0.exe`
+
+## Checkpoint — 2026-05-07 07:15 — planned `/rmods` companion distribution wave
+
+Task: /plan-cont
+
+Decision/planning update:
+
+- v0.3.0 is published and installer/tray smoke is accepted.
+- User prefers keeping the rMenu installer simple.
+- Next architectural wave: expose RSnip and RTasks inside `/rmods` instead of adding a separate `/companions` command or installer checkboxes.
+- `/rmods` becomes the unified extension hub while package kinds remain explicit:
+  - `rmod` / `rpack` for module packages;
+  - `companion` for native managed apps.
+- Companion rows must be visually distinct with a `COMPANION` badge/tone and companion-specific action copy.
+
+Queue update:
+
+- Marked T085 and T086 done based on accepted installer validation and published v0.3.0 release.
+- Added T094-T101 for companion registry contract, rmods generator support, rMenu parser/status, install/update/uninstall, UI distinction, docs migration, live registry publish, and manual validation.
+
+Validation:
+
+- Planning/docs update only; no code validation run.
+
+Next step:
+
+- Execute T094 with `/start-cont`.
+
+## Checkpoint — 2026-05-07 08:05 — T094-T099 implemented, T100 blocked on publish approval
+
+Tasks executed:
+
+- T094: specified `/rmods` companion package contract.
+- T095: extended `C:\rmods` registry generator and local registry data for companion entries.
+- T096: added rMenu parser/status support for `kind: companion`.
+- T097: added companion install/update/uninstall path through `/rmods` package operations.
+- T098: added visible `COMPANION` badge/hint support in `/rmods`.
+- T099: updated docs to make `/rmods` the primary companion management UX while preserving `/install rsnip` and `/install rtasks` as compatibility commands.
+
+Files changed:
+
+- `DECISIONS.md`
+- `README.md`
+- `INSTALL.md`
+- `docs/rmods-registry.md`
+- `docs/companion-and-rmods-workflow.md`
+- `src/app_state.rs`
+- `src/rmods_registry.rs`
+- `src/ui_win32.rs`
+- `C:\rmods\scripts\generate-registry.py`
+- `C:\rmods\companions\rsnip.json`
+- `C:\rmods\companions\rtasks.json`
+- `C:\rmods\registry.json`
+- `C:\rmods\README.md`
+- `C:\rmods\.github\workflows\update-registry.yml`
+
+Validation:
+
+- `cd C:\rmods && python -m py_compile scripts/generate-registry.py`: OK
+- `cd C:\rmods && python scripts/generate-registry.py`: OK, generated 13 entries including RSnip/RTasks companions
+- `python -m json.tool C:\rmods\registry.json`: OK
+- `cargo fmt --all`: OK
+- `cargo test ui_win32::tests::rmods --quiet`: OK
+- `cargo test rmods --quiet`: OK
+- `cargo check`: OK
+- `cargo test`: OK, 116 + 16 + 4 + 4 tests passed
+- `git diff --check`: OK for rMenu and rmods
+
+Blocked:
+
+- T100 is blocked until explicit approval to commit/push the rmods registry changes and matching rMenu changes.
+- T101 remains manual validation after live registry publish.
+
+Next step:
+
+- If approved: commit/push exact changed files in rMenu and rmods, then validate live `/rmods` companion entries.

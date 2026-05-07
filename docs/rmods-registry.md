@@ -237,3 +237,45 @@ Current resident-helper rpacks in the SynrgStudio registry include `taskbar-volu
 - dependency resolution between modules;
 - detailed module info screen;
 - confirmation prompts for destructive removals.
+
+## Companion packages
+
+`/rmods` is the unified extension hub. The registry can also contain native companion applications with:
+
+```json
+{
+  "id": "rsnip",
+  "name": "RSnip",
+  "version": "0.1.2",
+  "description": "Native screenshot, recording, and OCR companion.",
+  "kind": "companion",
+  "download_url": "https://github.com/SynrgStudio/rSnip/releases/latest/download/rsnip.exe",
+  "sha256": "4701988ff6438a0e76313559cef74201c5b5065d7e429e608745c5b9c9ab910f",
+  "size": 8909312,
+  "companion_executable": "rsnip.exe",
+  "tags": ["native", "companion", "screenshot", "ocr"]
+}
+```
+
+Companions are not `.rmod` modules. They are native applications managed by rMenu and installed under:
+
+```text
+<data_dir>\companions\<id>\
+```
+
+Rules:
+
+- `kind` is `companion`.
+- `download_url` points to a single downloadable native package or executable for the current MVP.
+- `sha256` and `size` verify the downloaded artifact before installation.
+- `companion_executable` is a safe relative path inside the companion install directory.
+- `base_url` and `files` are not used for companion entries in the MVP.
+- Runtime behavior remains native/IPC-backed; installing a companion does not load it as a module.
+
+UI rules:
+
+- `/rmods` renders companion entries with a visible `COMPANION` badge.
+- Install/update/remove copy says "companion" for companion entries.
+- Details/hints show that the install target is `<data_dir>\companions\<id>`.
+
+The rMenu installer intentionally does not bundle companions in this wave. RSnip and RTasks should be installed/updated from `/rmods`.
