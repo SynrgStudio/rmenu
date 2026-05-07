@@ -123,6 +123,18 @@ impl ExternalModuleHost {
         Ok(host)
     }
 
+    pub fn on_load(
+        &mut self,
+        snapshot: IpcSnapshot,
+    ) -> Result<Vec<IpcAction>, HostClientError> {
+        actions_from_response(
+            self.send_request(HostRequestPayload::OnLoad {
+                snapshot: Some(snapshot),
+            })?,
+            "OnLoad",
+        )
+    }
+
     pub fn on_query_change(
         &mut self,
         query: &str,

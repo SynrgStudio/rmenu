@@ -8,6 +8,8 @@ This project uses pragmatic versioning during the `0.x` line. Public module API 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-07
+
 ### Added
 
 - Daemon-backed warm launcher mode with prewarmed modules and global hotkeys for rMenu and RTasks panel.
@@ -20,6 +22,8 @@ This project uses pragmatic versioning during the `0.x` line. Public module API 
 - Resident helper rpacks in the registry: `taskbar-volume` and `thorium-tabs`.
 - Isolated native `color-picker` rpack helper with screen magnifier, precision mode, and clipboard copy.
 - `/rmods` status badges with colored install states.
+- Local-only installed rmods are shown in `/rmods` even when missing from the remote registry.
+- Timer rpack with premade/custom timers, running countdown accessory, and alarm stop handling when rMenu opens.
 
 ### Changed
 
@@ -36,6 +40,8 @@ This project uses pragmatic versioning during the `0.x` line. Public module API 
 - TaskbarVolume resident helper now passes middle-click through on taskbar app icons while retaining mute on empty taskbar background.
 - ThoriumTabs resident helper now avoids Windows Alt+Tab UI and suppresses right-button release so the browser context menu does not open.
 - `/rmods` status badge colors remain stable after moving the selection.
+- Hidden module actions are excluded from launcher history.
+- Input accessory clearing is scoped to the owning module.
 
 ### Release scope
 
@@ -86,5 +92,6 @@ This project uses pragmatic versioning during the `0.x` line. Public module API 
 
 ---
 
-[Unreleased]: https://github.com/SynrgStudio/rmenu/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SynrgStudio/rmenu/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/SynrgStudio/rmenu/compare/v0.3.2...v0.4.0
 [0.2.0]: https://github.com/SynrgStudio/rmenu/releases/tag/v0.2.0

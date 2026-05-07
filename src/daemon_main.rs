@@ -28,7 +28,7 @@ mod update_check;
 
 use std::env;
 use std::ffi::OsStr;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::windows::ffi::OsStrExt;
 #[cfg(not(test))]
@@ -526,12 +526,40 @@ fn initial_app_state(prepared: &PreparedRmenu) -> AppState {
 }
 
 #[cfg(not(test))]
+fn stop_ringing_timer_alarm(cli_data_dir: Option<&str>) {
+    let dirs = settings::rmenu_data_dirs(cli_data_dir);
+    let timer_state_dir = dirs.state_dir.join("modules").join("timer");
+    let state_path = timer_state_dir.join("state.json");
+    let Ok(content) = fs::read_to_string(&state_path) else {
+        return;
+    };
+    let content = content.trim_start_matches('\u{feff}');
+    let is_ringing = serde_json::from_str::<serde_json::Value>(content)
+        .ok()
+        .and_then(|state| {
+            state
+                .get("state")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
+        .is_some_and(|state| state == "ringing");
+    if !is_ringing {
+        return;
+    }
+    let _ = fs::create_dir_all(&timer_state_dir);
+    match fs::write(timer_state_dir.join("stop.flag"), "") {
+        Ok(()) => log_line("timer alarm stop flag written before rmenu open"),
+        Err(err) => log_line(&format!("timer alarm stop flag failed: {err}")),
+    }
+}
+
 fn show_warm_rmenu(
     prepared: &PreparedRmenu,
     runtime: modules::ModuleRuntime,
     open_index: u64,
     hotkey_received_at: Instant,
 ) -> modules::ModuleRuntime {
+    stop_ringing_timer_alarm(prepared.cmd_options.data_dir.as_deref());
     let started = Instant::now();
     let open_kind = if open_index == 1 { "cold" } else { "warm" };
     log_line(&format!(

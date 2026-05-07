@@ -16,15 +16,16 @@ use crate::ranking::update_matching_items_with_dataset;
 use crate::rmods_registry::{
     download_verify_and_install_rmod, fetch_default_registry, install_status_for,
     read_registry_cache, scan_installed_rmods, uninstall_rmod, RmodsInstallStatus,
-    RmodsRegistryItem, DEFAULT_RMODS_REGISTRY_URL, RMODS_PACKAGE_KIND_COMPANION,
+    RmodsLocalModule, RmodsRegistryItem, DEFAULT_RMODS_REGISTRY_URL, RMODS_PACKAGE_KIND_COMPANION,
 };
 use crate::rsnip_companion::install_rsnip_latest;
 use crate::rtasks_companion::{
     install_rtasks_latest, RtasksCompanion, RtasksIpcResponse, RtasksPriority, RtasksTaskStatus,
 };
-use crate::settings::{CmdOptions, QuickSelectMode, RmenuConfig};
+use crate::settings::{rmenu_data_dirs, CmdOptions, QuickSelectMode, RmenuConfig};
 use crate::sources::persist_history_entry;
 use std::ffi::OsStr;
+use std::fs;
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::process::CommandExt;
@@ -32,7 +33,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Mutex;
 use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use windows::{
     core::PCWSTR,
     Win32::{
@@ -70,6 +71,7 @@ static UI_EXIT_CODE: AtomicI32 = AtomicI32::new(0);
 static SUPPRESS_NEXT_RMODS_SPACE_CHAR: AtomicBool = AtomicBool::new(false);
 const INSTALL_CLOSE_TIMER_ID: usize = 42;
 const INSTALL_START_TIMER_ID: usize = 43;
+const TIMER_COUNTDOWN_REFRESH_ID: usize = 44;
 const WM_INSTALL_PROGRESS: u32 = 0x8000 + 1;
 const WM_INSTALL_DONE: u32 = 0x8000 + 2;
 const INPUT_PLACEHOLDER_TEXT: &str = concat!("rMenu ", env!("CARGO_PKG_VERSION"));
@@ -555,10 +557,12 @@ fn update_rmods_items(app_state: &mut AppState, force_refresh: bool) {
 
     match registry {
         Ok(registry) => {
+            let mut registry_ids = std::collections::BTreeSet::new();
             app_state.rmods.items = registry
                 .modules
                 .into_iter()
                 .map(|item| {
+                    registry_ids.insert(item.id.to_ascii_lowercase());
                     let local = local_modules.get(&item.id.to_ascii_lowercase());
                     let status = match install_status_for(&item, local) {
                         RmodsInstallStatus::NotInstalled => RmodsInstallStatusView::NotInstalled,
@@ -588,6 +592,12 @@ fn update_rmods_items(app_state: &mut AppState, force_refresh: bool) {
                     }
                 })
                 .collect();
+            app_state.rmods.items.extend(
+                local_modules
+                    .values()
+                    .filter(|local| !registry_ids.contains(&local.id.to_ascii_lowercase()))
+                    .map(local_only_rmods_item),
+            );
             app_state.rmods.error = None;
         }
         Err(error) => {
@@ -598,6 +608,24 @@ fn update_rmods_items(app_state: &mut AppState, force_refresh: bool) {
 
     app_state.rmods.loaded = true;
     render_rmods_matching_items(app_state);
+}
+
+fn local_only_rmods_item(local: &RmodsLocalModule) -> RmodsUiItem {
+    RmodsUiItem {
+        id: local.id.clone(),
+        name: local.id.clone(),
+        version: local.version.clone(),
+        description: format!("Local {} not present in registry", local.kind),
+        kind: local.kind.clone(),
+        download_url: String::new(),
+        base_url: String::new(),
+        sha256: local.sha256.clone(),
+        size: 0,
+        files: Vec::new(),
+        companion_executable: String::new(),
+        status: RmodsInstallStatusView::Installed,
+        pending_action: RmodsPendingAction::None,
+    }
 }
 
 fn render_rmods_matching_items(app_state: &mut AppState) {
@@ -1268,6 +1296,9 @@ unsafe extern "system" fn window_proc(
             if !is_measure_mode_enabled() {
                 sleep(Duration::from_millis(50));
                 SetForegroundWindow(hwnd);
+            }
+            unsafe {
+                SetTimer(hwnd, TIMER_COUNTDOWN_REFRESH_ID, 500, None);
             }
             LRESULT(0)
         }
@@ -1994,6 +2025,33 @@ unsafe extern "system" fn window_proc(
                 });
             } else if w_param.0 == INSTALL_CLOSE_TIMER_ID {
                 request_ui_exit(hwnd, 0);
+            } else if w_param.0 == TIMER_COUNTDOWN_REFRESH_ID {
+                if let Ok(config_guard) = CONFIG.lock() {
+                    if config_guard.is_some() {
+                        update_timer_countdown_accessory(hwnd, &CmdOptions {
+                            elements_str: None,
+                            prompt: None,
+                            config_path: None,
+                            modules_dir: None,
+                            data_dir: None,
+                            install_companion: None,
+                            silent: false,
+                            debug_ranking: None,
+                            metrics: false,
+                            modules_debug: false,
+                            reindex: false,
+                            layout: None,
+                            cli_width_percent: None,
+                            cli_max_width: None,
+                            cli_height: None,
+                            cli_item_height: None,
+                            cli_x_pos: None,
+                            cli_y_pos: None,
+                            cli_padding: None,
+                            cli_border_width: None,
+                        });
+                    }
+                }
             }
             LRESULT(0)
         }
@@ -2041,6 +2099,115 @@ fn finish_ui_run_timing(
     *trace_guard = None;
 }
 
+fn timer_state_dir_for(cli_data_dir: Option<&str>) -> std::path::PathBuf {
+    rmenu_data_dirs(cli_data_dir)
+        .state_dir
+        .join("modules")
+        .join("timer")
+}
+
+fn stop_ringing_timer_alarm(cmd_options: &CmdOptions) {
+    let timer_state_dir = timer_state_dir_for(cmd_options.data_dir.as_deref());
+    let state_path = timer_state_dir.join("state.json");
+    let Ok(content) = fs::read_to_string(&state_path) else {
+        return;
+    };
+    let content = content.trim_start_matches('\u{feff}');
+    let is_ringing = serde_json::from_str::<serde_json::Value>(content)
+        .ok()
+        .and_then(|state| state.get("state").and_then(|value| value.as_str()).map(str::to_string))
+        .is_some_and(|state| state == "ringing");
+    if !is_ringing {
+        return;
+    }
+    let _ = fs::create_dir_all(&timer_state_dir);
+    let _ = fs::write(timer_state_dir.join("stop.flag"), "");
+}
+
+fn now_epoch_ms() -> Option<u64> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_millis() as u64)
+}
+
+fn format_timer_remaining(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+    if hours > 0 {
+        format!("{hours}h {minutes}m {seconds}s")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds}s")
+    } else {
+        format!("{seconds}s")
+    }
+}
+
+fn active_accessory_is_timer(runtime: &ModuleRuntime) -> bool {
+    runtime
+        .active_input_accessory()
+        .map(|accessory| accessory.text.starts_with("timer:"))
+        .unwrap_or(false)
+}
+
+fn update_timer_countdown_accessory(hwnd: HWND, cmd_options: &CmdOptions) {
+    let input_is_empty = APP_STATE
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|state| state.current_input.trim().is_empty()))
+        .unwrap_or(false);
+    if !input_is_empty {
+        let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+        if let Some(runtime) = runtime_guard.as_mut() {
+            if active_accessory_is_timer(runtime) {
+                runtime.clear_runtime_feedback();
+                unsafe { InvalidateRect(hwnd, None, true) };
+            }
+        }
+        return;
+    }
+
+    let state_path = timer_state_dir_for(cmd_options.data_dir.as_deref()).join("state.json");
+    let remaining = fs::read_to_string(state_path)
+        .ok()
+        .and_then(|content| {
+            let content = content.trim_start_matches('\u{feff}');
+            serde_json::from_str::<serde_json::Value>(content).ok()
+        })
+        .and_then(|state| {
+            let is_running = state
+                .get("state")
+                .and_then(|value| value.as_str())
+                .is_some_and(|value| value == "running");
+            if !is_running {
+                return None;
+            }
+            let deadline = state.get("deadline_epoch_ms").and_then(|value| value.as_u64())?;
+            let now = now_epoch_ms()?;
+            if deadline <= now {
+                return None;
+            }
+            Some(((deadline - now) + 999) / 1000)
+        });
+
+    let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
+    let Some(runtime) = runtime_guard.as_mut() else {
+        return;
+    };
+
+    if let Some(seconds) = remaining {
+        runtime.set_runtime_feedback(
+            format!("timer: {} remaining", format_timer_remaining(seconds)),
+            InputAccessoryKind::Success,
+        );
+        unsafe { InvalidateRect(hwnd, None, true) };
+    } else if active_accessory_is_timer(runtime) {
+        runtime.clear_runtime_feedback();
+        unsafe { InvalidateRect(hwnd, None, true) };
+    }
+}
+
 fn run_ui_internal(
     cmd_options: &CmdOptions,
     config: &RmenuConfig,
@@ -2050,6 +2217,7 @@ fn run_ui_internal(
     embedded_mode: bool,
     mut run_timings: Option<&mut UiRunTimings>,
 ) -> windows::core::Result<i32> {
+    stop_ringing_timer_alarm(cmd_options);
     let run_started_at = Instant::now();
     if run_timings.is_some() {
         let mut trace_guard = UI_RUN_TIMING_TRACE.lock().unwrap();

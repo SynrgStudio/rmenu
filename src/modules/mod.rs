@@ -519,6 +519,60 @@ impl ModuleRuntime {
             module.on_load(&mut ctx);
             Self::apply_ctx_requests(module.name(), &mut ctx, app_state, &mut self.state, None);
         }
+
+        let mut failed_hosts: Vec<String> = Vec::new();
+        let mut telemetry_events: Vec<(String, u128, bool, bool, Option<String>)> = Vec::new();
+
+        for host in &mut self.external_hosts {
+            let started = Instant::now();
+            let snapshot = ipc_snapshot_from_app_state(app_state, false);
+            match host.on_load(snapshot) {
+                Ok(actions) => {
+                    Self::apply_ipc_actions(
+                        &host.module_name,
+                        actions,
+                        app_state,
+                        &mut self.state,
+                        self.host_capabilities.get(&host.module_name),
+                    );
+                    telemetry_events.push((
+                        host.module_name.clone(),
+                        started.elapsed().as_millis(),
+                        false,
+                        false,
+                        None,
+                    ));
+                }
+                Err(err) => {
+                    let is_timeout = matches!(err, HostClientError::Timeout(_));
+                    telemetry_events.push((
+                        host.module_name.clone(),
+                        started.elapsed().as_millis(),
+                        true,
+                        is_timeout,
+                        Some(host_error_message(&err)),
+                    ));
+                    failed_hosts.push(host.module_name.clone());
+                }
+            }
+        }
+
+        for (name, latency_ms, is_error, is_timeout, error_message) in telemetry_events {
+            if is_error {
+                self.record_host_error(
+                    &name,
+                    latency_ms,
+                    is_timeout,
+                    error_message.unwrap_or_else(|| "unknown host error".to_string()),
+                );
+            } else {
+                self.record_host_success(&name, latency_ms);
+            }
+        }
+
+        for module_name in failed_hosts {
+            self.restart_external_host(&module_name, app_state.silent_mode);
+        }
     }
 
     pub fn run_on_unload(&mut self, app_state: &mut AppState) {

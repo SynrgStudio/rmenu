@@ -101,7 +101,13 @@ pub fn apply_action_request(
             }
         }
         ModuleActionRequest::ClearInputAccessory => {
-            state.active_input_accessory = None;
+            if state
+                .active_input_accessory
+                .as_ref()
+                .is_some_and(|(owner, _)| owner == module_name)
+            {
+                state.active_input_accessory = None;
+            }
             Ok(ActionEffect::InputAccessoryCleared)
         }
         ModuleActionRequest::RegisterCommand(command) => {

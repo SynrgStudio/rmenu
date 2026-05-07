@@ -1,0 +1,12 @@
+name = "timer"
+version = "0.1.0"
+api_version = "1"
+kind = "script"
+entry = "module.js"
+capabilities = ["providers", "input-accessory"]
+enabled = true
+priority = 20
+description = "Start short timers with premades, custom durations, and a sound alarm."
+
+[config]
+file = "config.json"
