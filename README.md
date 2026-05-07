@@ -1,53 +1,94 @@
 # rmenu
 
-Lightweight Windows launcher inspired by `dmenu`, built in Rust.
+`rmenu` is a lightweight native Windows launcher and modular command surface inspired by `dmenu`, built in Rust.
 
-`rmenu` has two modes:
-
-1. **Launcher mode (default)**: no `-e` and no piped `stdin` -> auto-loads apps/commands from History + Start Menu + PATH and launches on Enter.
-2. **Script/dmenu mode**: provide items via `-e` or `stdin` -> returns selected item to `stdout`.
+It is designed to stay fast and small at the core while letting features grow as modules, rpacks, resident helpers, and native companions.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SynrgStudio/rmenu/main/img.jpg" alt="rmenu screenshot" width="600"/>
 </p>
 
-## Why rmenu
+---
 
-- Fast fuzzy search with source-aware ranking.
-- Friendly labels for apps (uses executable metadata when available).
-- Still searchable by technical executable names (`mspaint`, `powershell`, etc.).
-- Native Windows launch path via `ShellExecuteW` with controlled fallback.
-- JSON index cache with environment signature (auto-invalidation on PATH/Start Menu changes).
-- Modular runtime for external providers, commands, decorators and input accessories.
-- Built-in diagnostics for ranking, performance and modules (`--debug-ranking`, `--metrics`, `--modules-debug`, `--reindex`).
+## What rmenu does
+
+rMenu can be used in two ways:
+
+1. **Launcher mode**: open rMenu, fuzzy-search apps/commands from History, Start Menu, and PATH, then launch the selected item.
+2. **Script/dmenu mode**: pass items with `stdin` or `-e`, choose one in the UI, and print the selected item to `stdout`.
+
+On top of that base launcher, rMenu is also an extension host:
+
+- `.rmod` modules add single-file JavaScript behavior.
+- `rpack` packages add folder-based modules with config, assets, scripts, and optional helpers.
+- resident helper rpacks run background helpers through `rmenu-daemon`.
+- native companions such as RSnip and RTasks are installed and managed by rMenu but run as separate applications.
+- `/rmods` is the built-in extension manager for modules, rpacks, and companions.
+
+The product goal is a command center that stays instant for everyday use while allowing advanced features to live outside the core.
 
 ---
 
-## Current project status
+## Why rmenu exists
 
-`rmenu` is a native Windows launcher and modular command surface.
+The core philosophy is:
 
-The launcher core is implemented and stable:
+> If a feature can be implemented as a module, it should not be hardcoded into the core.
 
-- Win32 UI extracted into `src/ui_win32.rs`
-- Ranking engine in `src/ranking.rs` + `src/fuzzy.rs`
-- Source indexing/cache in `src/sources/mod.rs`
-- Launch backend in `src/launcher.rs`
-- History persistence + source boosts + blacklist controls
-- Unicode UI rendering (`TextOutW`)
+The core stays responsible for the parts that must be reliable:
 
-The modular core is defined around:
+- Win32 UI, input, rendering, selection, and scrolling.
+- fuzzy matching, ranking, dedupe, and source boosts.
+- History, Start Menu, PATH, and direct input sources.
+- native Windows launching through `ShellExecuteW` with controlled fallback.
+- config, CLI parsing, diagnostics, cache, and performance metrics.
+- module loading, IPC, permissions, timeouts, telemetry, and error isolation.
+- `/rmods` install/update/remove workflow and package verification.
 
-- `.rmod` single-file modules and directory modules with `module.toml`
-- external module host process
-- IPC boundaries
-- capabilities enforcement
-- provider budgets/timeouts
-- command namespacing
-- decorations, quick-select and input accessory primitives
-- module diagnostics via `--modules-debug`
+Feature-specific behavior belongs in extensions:
 
-Architecture and public contracts live in the root specs, starting with `MODULES_ARCHITECTURE.md`. The formal v1 freeze declaration lives in `CORE_FREEZE_V1.md`.
+- calculator logic,
+- shortcuts,
+- timers,
+- taskbar volume hooks,
+- browser gestures,
+- screenshots/OCR,
+- task management,
+- future clipboard/history/window/dev workflows.
+
+This keeps the launcher fast, predictable, and recoverable even if an extension fails.
+
+---
+
+## Current status
+
+rMenu is a native Windows launcher and frozen v1 modular platform.
+
+Implemented core pieces:
+
+- Win32 UI in `src/ui_win32.rs`.
+- ranking in `src/ranking.rs` and `src/fuzzy.rs`.
+- source indexing/cache in `src/sources/mod.rs`.
+- launch backend in `src/launcher.rs`.
+- settings, CLI, and data-root handling in `src/settings.rs`.
+- module runtime, host process, IPC, capabilities, and telemetry in `src/modules/`.
+- daemon and warm launcher path in `src/daemon_main.rs`.
+- updater binary in `src/updater_main.rs`.
+
+Public contracts are documented in:
+
+- `CORE_FREEZE_V1.md`
+- `MODULES_ARCHITECTURE.md`
+- `MODULES_API_SPEC_V1.md`
+- `RMOD_SPEC_V1.md`
+- `MANIFEST_SPEC_V1.md`
+- `CTX_ACTIONS_SPEC_V1.md`
+- `PROVIDER_EXECUTION_POLICY.md`
+- `ERROR_ISOLATION_POLICY.md`
+- `MODULES_CAPABILITIES_MATRIX.md`
+- `MODULES_AUTHORING_GUIDE.md`
+- `MODULES_OPERATIONS_GUIDE.md`
+- `MODULES_QUICKSTART.md`
 
 ---
 
@@ -55,19 +96,17 @@ Architecture and public contracts live in the root specs, starting with `MODULES
 
 ### From releases
 
-Download the latest Windows x64 zip from:
+Download the latest Windows x64 release from:
 
 - <https://github.com/SynrgStudio/rmenu/releases>
 
-See `INSTALL.md` for installer/zip install, data-folder setup, startup daemon behavior, checksum verification, and update instructions.
+Release assets normally include:
 
-Release docs:
+- `rmenu-v<version>-windows-x64.zip`
+- `rmenu-setup-v<version>.exe`
+- `SHA256SUMS.txt`
 
-- `scripts/release-local.ps1` — interactive one-command maintainer release script.
-- `INSTALL.md` — install/update instructions.
-- `CHANGELOG.md` — release notes.
-- `RELEASE_CHECKLIST.md` — maintainer release process.
-- `docs/release/BINARY_SIGNING.md` — current signing/checksum policy.
+See `INSTALL.md` for zip install, installer behavior, startup daemon setup, checksum verification, and updates.
 
 ### Build from source
 
@@ -82,16 +121,19 @@ Binary output:
 - `target/release/rmenu.exe`
 - `target/release/rmenu-daemon.exe`
 - `target/release/rmenu-module-host.exe`
+- `target/release/rmenu-updater.exe`
 
 ---
 
-## Usage
+## Quick usage
 
-### Launcher mode (default)
+### Launcher mode
 
 ```powershell
 rmenu.exe
 ```
+
+No `-e` and no piped `stdin` means launcher mode. rMenu loads searchable items from History, Start Menu, PATH, direct input, and enabled modules.
 
 ### Script mode with `stdin`
 
@@ -105,47 +147,70 @@ rmenu.exe
 rmenu.exe -e "Item A,Item B,Item C" -p "Pick one"
 ```
 
-### Resident daemon / global hotkey
+---
 
-`rmenu-daemon.exe` is the resident launcher helper. It registers a global hotkey and keeps rmenu state/modules prewarmed in the daemon process so the hotkey can show the launcher without cold-starting external module hosts every time. The default hotkey is `Ctrl+Shift+Space`.
+## Resident daemon and hotkeys
 
-Development example from the repository root:
+`rmenu-daemon.exe` is the resident helper. It keeps launcher state and module hosts warm so opening rMenu from a hotkey does not cold-start all module hosts each time.
 
-```powershell
-target\debug\rmenu-daemon.exe --hotkey "ctrl+shift+space" --rmenu "C:\rMenu\target\debug\rmenu.exe" --modules-dir "C:\rMenu\modules"
+Default hotkeys:
+
+```text
+Ctrl+Shift+Space  open rMenu
+Ctrl+Space        open/toggle RTasks panel when RTasks is installed
 ```
 
-`--rmenu` is retained for startup command compatibility. In resident-prewarmed mode the daemon does not spawn `rmenu.exe` for every hotkey press. `--open` asks an already-running daemon to show rMenu; if no daemon is running, it starts the daemon and opens rMenu once.
-
-Install current daemon command for user startup:
+Start daemon:
 
 ```powershell
-target\debug\rmenu-daemon.exe --hotkey "ctrl+shift+space" --rmenu "C:\rMenu\target\debug\rmenu.exe" --modules-dir "C:\rMenu\modules" --install-startup
+rmenu-daemon.exe
 ```
 
-Stop a running daemon:
+Open an already-running daemon, or start one and open once:
 
 ```powershell
-target\debug\rmenu-daemon.exe --quit
+rmenu-daemon.exe --open
+```
+
+Stop daemon:
+
+```powershell
+rmenu-daemon.exe --quit
+```
+
+Install startup entry:
+
+```powershell
+rmenu-daemon.exe --hotkey "ctrl+shift+space" --rmenu "C:\rMenu\rmenu.exe" --install-startup
 ```
 
 Remove startup entry:
 
 ```powershell
-target\debug\rmenu-daemon.exe --uninstall-startup
+rmenu-daemon.exe --uninstall-startup
 ```
 
-Daemon logs are written to:
+Daemon logs:
 
 ```text
 %APPDATA%\rmenu\rmenu-daemon.log
 ```
 
-The daemon also owns generic resident-helper lifecycle for installed `rpack` modules that declare `[resident]` in `module.toml`. It starts helpers from module-local paths, passes module/state/config context, syncs helpers after module reload/install/uninstall points, and stops helpers on `--quit`. Feature behavior stays in the rpack helper, not rMenu core. Current resident-helper examples are `taskbar-volume` and `thorium-tabs`.
+The daemon also manages resident helper rpacks. It starts/stops helpers, passes module/state/config paths, and logs failures. The feature itself remains owned by the rpack helper, not by rMenu core.
 
-### Persistent data root model
+---
 
-rMenu uses a persistent data root for modules, companions, config, and state. The default Windows data root is `C:\rMenuData`. The target layout is:
+## Persistent data root
+
+rMenu keeps mutable product data outside the app directory.
+
+Default Windows data root:
+
+```text
+C:\rMenuData
+```
+
+Layout:
 
 ```text
 <data_dir>\
@@ -156,51 +221,240 @@ rMenu uses a persistent data root for modules, companions, config, and state. Th
       config\
       state\
       logs\
+    rtasks\
+      rtasks.exe
+      config\
+      state\
+      logs\
   config\
   state\
+    modules\
+      <module-id>\
+    downloads\
+    rmods-registry-cache.json
+    rmods-installed.json
 ```
 
-Default module discovery derives from `<data_dir>\modules`. Existing `--modules-dir` and `RMENU_MODULES_DIR` remain explicit overrides for development, debugging, and migration.
+Overrides:
 
-RSnip and RTasks are native companions. rMenu-managed installs use:
+- `--data-dir <PATH>` or `RMENU_DATA_DIR` changes the full data root.
+- `--modules-dir <PATH>` or `RMENU_MODULES_DIR` explicitly overrides module discovery.
+- if no module override is set, modules load from `<data_dir>\modules`.
+
+Modules should store user-created state in:
 
 ```text
-<data_dir>\companions\rsnip\rsnip.exe
-<data_dir>\companions\rtasks\rtasks.exe
+<data_dir>\state\modules\<module-name>\
 ```
 
-RSnip aliases are intentionally minimal:
+JavaScript modules access that path with:
 
-```text
-snip  screenshot region
-rec   screen recording
-ocr   OCR region
+```js
+ctx.moduleStateDir()
 ```
 
-RTasks integrates as an embedded rMenu task-capture mode:
+Do not store durable user data inside an installed rpack folder; rpack updates replace package files.
+
+---
+
+## Sources, ranking, and launch behavior
+
+In launcher mode rMenu builds a dataset from:
+
+- History.
+- Start Menu shortcuts.
+- PATH executables.
+- direct typed input.
+- loaded module providers.
+
+Ranking combines fuzzy matching with source-aware boosts. Start Menu and History can be boosted above noisy PATH tools. Technical executable names remain searchable, so both friendly names and commands like `mspaint` or `powershell` work.
+
+History entries are persisted unless the target is hidden/internal, for example `hidden:powershell.exe ...` used by modules for background actions.
+
+Index cache:
 
 ```text
-t comprar pan mañana
+%APPDATA%\rmenu\index.json
 ```
 
-While the input starts with `t `, `Alt+1/2/3` toggles `TODO/DOING/DONE`, and `Alt+Q/W/E` toggles high/medium/low priority. `tasks` opens the RTasks panel/task list. `Ctrl+Space` opens the RTasks panel when the daemon is running.
+The cache is versioned and includes an environment signature. It auto-invalidates when PATH or Start Menu roots change. Force rebuild:
 
-Future installer UX should allow selecting an existing data folder, defaulting to `C:\rMenuData`, and reuse its existing modules, companions, config, and state without overwriting them.
+```powershell
+rmenu.exe --reindex
+```
 
-See `docs/companion-and-rmods-workflow.md` for the full companion, `/rmods`, `rpack`, module-state, and color-picker workflow. Planned updater behavior is specified in `docs/update-workflow.md`.
+---
 
-### `/rmods` registry workflow
+## Modules, rmods, and rpacks
 
-rMenu includes a core-owned `/rmods` command for installing extensions from a GitHub registry repository. Package kinds are explicit:
+rMenu supports two JavaScript extension formats.
 
-- `rmod`: single-file JavaScript module;
-- `rpack`: folder JavaScript module/helper package;
-- `companion`: native managed app such as RSnip or RTasks.
+### `.rmod`
 
-The registry repository layout is:
+A `.rmod` is a single UTF-8 module file.
+
+Install target:
 
 ```text
-rmenu-rmods/
+<data_dir>\modules\<id>.rmod
+```
+
+Use `.rmod` for compact modules that fit in one file.
+
+### `rpack`
+
+An `rpack` is a folder module with a manifest and files.
+
+Install target:
+
+```text
+<data_dir>\modules\<id>\
+  module.toml
+  module.js
+  config.json
+  README.md
+  bin\
+  assets\
+  scripts\
+```
+
+Use `rpack` when a module needs config, docs, assets, scripts, native helpers, sounds, or multiple files. `rpack` is a folder distribution format, not a zip format.
+
+### Directory modules for development
+
+A local development module uses the same structure:
+
+```text
+modules\<name>\module.toml
+modules\<name>\module.js
+```
+
+Run with:
+
+```powershell
+rmenu.exe --modules-dir .\modules --modules-debug
+```
+
+Module discovery order:
+
+1. `--modules-dir`
+2. `RMENU_MODULES_DIR`
+3. `<data_dir>\modules`
+4. `modules` next to `rmenu.exe`
+5. current working directory `modules` as development fallback
+
+---
+
+## Module API model
+
+Modules run outside the main process through `rmenu-module-host.exe`. The core communicates with hosts over IPC and validates all actions.
+
+Public hooks:
+
+```ts
+onLoad(ctx)
+onUnload(ctx)
+onQueryChange(query, ctx)
+onSelectionChange(item, index, ctx)
+onKey(event, ctx)
+onSubmit(item, ctx)
+onCommand(command, args, ctx)
+provideItems(query, ctx) -> Item[]
+decorateItems(items, ctx) -> Item[]
+```
+
+Modules can contribute:
+
+- providers,
+- commands,
+- decorations,
+- quick-select keys,
+- input accessories,
+- controlled key hooks.
+
+Official capabilities:
+
+```text
+providers
+commands
+decorate-items
+input-accessory
+keys
+```
+
+A module must declare capabilities in `.rmod` or `module.toml`. Operations without the matching capability are rejected.
+
+Item shape:
+
+```ts
+type Item = {
+  id: string
+  title: string
+  subtitle?: string
+  source?: string
+  target?: string
+  quickSelectKey?: string
+  badge?: string
+  hint?: string
+}
+```
+
+Input accessory shape:
+
+```ts
+type InputAccessory = {
+  text: string
+  kind?: "info" | "success" | "warning" | "error" | "hint"
+  priority?: number
+}
+```
+
+The core remains authoritative over rendering, ranking, dedupe, execution policy, timeouts, and error isolation. Modules cannot draw UI directly, access Win32/GDI, replace ranking, mutate arbitrary state, or bypass capabilities.
+
+Runtime module commands inside rMenu:
+
+```text
+/modules.reload
+/modules.list
+/modules.telemetry.reset
+```
+
+Diagnostics:
+
+```powershell
+rmenu.exe --modules-debug
+```
+
+---
+
+## `/rmods` extension manager
+
+`/rmods` is the built-in extension manager. It is core-owned, not a privileged module.
+
+It can install, update, and remove:
+
+| Kind | Meaning | Install target |
+| --- | --- | --- |
+| `rmod` | single-file JavaScript module | `<data_dir>\modules\<id>.rmod` |
+| `rpack` | folder JavaScript module/helper package | `<data_dir>\modules\<id>\` |
+| `companion` | native managed app | `<data_dir>\companions\<id>\` |
+
+Default registry:
+
+```text
+https://raw.githubusercontent.com/SynrgStudio/rmods/main/registry.json
+```
+
+Registry repo:
+
+```text
+https://github.com/SynrgStudio/rmods
+```
+
+Registry source layout:
+
+```text
+rmods/
   modules/
     example.rmod
   rpacks/
@@ -220,29 +474,197 @@ rmenu-rmods/
       update-registry.yml
 ```
 
-`registry.json` is generated automatically by GitHub Actions from `modules/*.rmod`, `rpacks/*`, and `companions/*.json`; it is not edited by hand. `/rmods` fetches that generated registry, shows available/installed/updateable packages, verifies SHA-256 before install, installs modules under `<data_dir>\modules`, installs companions under `<data_dir>\companions`, and refreshes runtime state.
+`registry.json` is generated by GitHub Actions from source files and should not be edited by hand.
 
-Companion entries are shown with a `COMPANION` badge in `/rmods`. RSnip and RTasks should be installed/updated there; `/install rsnip` and `/install rtasks` are compatibility commands during the transition. Some rpacks include resident native helpers. Treat those installs as trust decisions because helpers may use OS integrations such as global hooks. Module package files land under `<data_dir>\modules`; companion binaries land under `<data_dir>\companions`; mutable helper/user state belongs under `<data_dir>\state\modules\<module-name>`.
+`/rmods` security and install policy:
 
-Current controls:
+- validates registry schema and package kind,
+- validates module IDs,
+- rejects unsafe paths, absolute paths, and traversal,
+- downloads to `<data_dir>\state\downloads`,
+- verifies file size and SHA-256,
+- stages installs before replacing package files,
+- records installed version/kind/checksum in `<data_dir>\state\rmods-installed.json`,
+- refreshes runtime state after changes.
 
-```text
-/rmods     open registry list
-Up/Down    move cursor
-Space      mark/unmark a module for change (`[/]`)
-F5/Ctrl+R  refresh registry
-Ctrl+U     select update-available modules
-Enter      apply pending installs/updates/removals
-Esc        close rMenu
-```
-
-Default registry:
+Controls:
 
 ```text
-https://raw.githubusercontent.com/SynrgStudio/rmods/main/registry.json
+/rmods          open registry list
+/rmods <query>  filter registry list
+Up/Down         move cursor
+Space           mark/unmark pending change
+F5/Ctrl+R       refresh registry
+Ctrl+U          mark update-available packages
+Enter           apply pending installs/updates/removals
+Esc             close rMenu
 ```
 
-See `docs/rmods-registry.md` for the repository layout/schema and `docs/companion-and-rmods-workflow.md` for the end-to-end user workflow.
+Markers:
+
+```text
+[x] installed
+[ ] not installed
+[/] pending change
+```
+
+Companions show a visible `COMPANION` badge. Local-only installed rpacks are also shown even when missing from the remote registry.
+
+See `docs/rmods-registry.md` for the registry schema and generation policy.
+
+---
+
+## Resident helper rpacks
+
+A resident helper rpack is a folder module that declares a background helper in `module.toml`:
+
+```toml
+[resident]
+enabled = true
+command = "bin/helper.exe"
+autostart = true
+shutdown = "kill"
+```
+
+The daemon lifecycle contract is intentionally generic:
+
+- discover resident declarations,
+- start helpers from module-local relative paths,
+- pass module name, module dir, state dir, and config path,
+- stop helpers on daemon quit, uninstall, update, or helper sync,
+- log failures without crashing rMenu.
+
+The core must not implement helper-specific behavior. Examples:
+
+| rpack | behavior |
+| --- | --- |
+| `taskbar-volume` | wheel over taskbar changes volume; middle click mutes |
+| `thorium-tabs` | Thorium-specific tab mouse gestures |
+| `color-picker` | launches an isolated native picker helper |
+
+Security note: resident helpers may use global hooks or other OS integrations. Installing one is a trust decision.
+
+Troubleshooting:
+
+```text
+%APPDATA%\rmenu\rmenu-daemon.log
+```
+
+Expected daemon log lines include helper start/stop events.
+
+---
+
+## Native companions
+
+Companions are separate native applications managed by rMenu. They are not JavaScript modules and are not loaded into the module host.
+
+Companions are installed under:
+
+```text
+<data_dir>\companions\<id>\
+```
+
+They are preferably installed and updated through `/rmods`.
+
+Compatibility commands still exist:
+
+```text
+/install rsnip
+/install rtasks
+```
+
+or CLI:
+
+```powershell
+rmenu.exe --install rsnip
+rmenu.exe --install rtasks
+```
+
+### RSnip
+
+RSnip owns screenshot, recording, and OCR behavior. rMenu exposes simple aliases and dispatches to RSnip through native/IPC integration.
+
+Install target:
+
+```text
+<data_dir>\companions\rsnip\rsnip.exe
+```
+
+Discovery order:
+
+1. `<data_dir>\companions\rsnip\rsnip.exe`
+2. `RMENU_RSNIP_PATH`
+3. `C:\rSnip\target\release\rsnip.exe`
+4. unambiguous `PATH` match
+
+Aliases:
+
+```text
+snip  screenshot region
+rec   screen recording
+ocr   OCR region
+```
+
+### RTasks
+
+RTasks is a native task backend/panel companion. rMenu owns embedded task input.
+
+Install target:
+
+```text
+<data_dir>\companions\rtasks\rtasks.exe
+```
+
+Embedded task capture:
+
+```text
+t comprar pan mañana
+```
+
+While input starts with `t `:
+
+```text
+Alt+1  toggle TODO
+Alt+2  toggle DOING
+Alt+3  toggle DONE
+Alt+Q  toggle high priority
+Alt+W  toggle medium priority
+Alt+E  toggle low priority
+```
+
+Panel alias:
+
+```text
+tasks
+```
+
+Daemon panel hotkey:
+
+```text
+Ctrl+Space
+```
+
+When the panel closes, focus is restored to the previously focused window when possible.
+
+---
+
+## Included and known extension examples
+
+Repository/release examples may include:
+
+| Extension | Kind | Purpose |
+| --- | --- | --- |
+| `calculator.rmod` | `rmod` | simple calculator example |
+| `local-scripts.rmod` | `rmod` | local script launcher example |
+| `shortcuts.example.rmod` | `rmod` | example shortcut aliases |
+| `timer` | `rpack` | premade/custom timers, countdown accessory, alarm sound |
+| `taskbar-volume` | resident `rpack` | taskbar volume control helper |
+| `thorium-tabs` | resident `rpack` | Thorium tab mouse gestures |
+| `color-picker` | helper `rpack` | native screen color picker |
+| `rsnip` | companion | screenshots, recordings, OCR |
+| `rtasks` | companion | tasks backend/panel |
+
+The timer rpack demonstrates a multi-file package with config, a PowerShell helper, a sound asset, module state, hidden background actions, and an input accessory countdown.
 
 ---
 
@@ -289,11 +711,13 @@ Geometry and Layout Options (override config.ini):
 
 Default config path:
 
-- `%APPDATA%\rmenu\config.ini`
+```text
+%APPDATA%\rmenu\config.ini
+```
 
-If missing, `rmenu` generates one from defaults.
+If missing, rMenu generates one from defaults.
 
-### Minimal launcher section
+Minimal launcher section:
 
 ```ini
 [Launcher]
@@ -308,120 +732,29 @@ source_boost_path = 0
 blacklist_path_commands = powercfg,where,whoami,icacls,takeown,tasklist,taskkill,wevtutil,sfc,dism,gpupdate,bcdedit,reg,sc,netsh,wmic
 ```
 
-### Notes
+Notes:
 
-- Increase `source_boost_start_menu` if you want app shortcuts to dominate over PATH tools.
+- Increase `source_boost_start_menu` if app shortcuts should dominate over PATH tools.
 - Keep high-noise CLI commands in `blacklist_path_commands`.
-
-### Index cache
-
-- File: `%APPDATA%\rmenu\index.json`
-- Format: versioned JSON + environment signature
-- Auto-rebuild: when PATH or Start Menu roots change
-- Manual rebuild:
-
-```powershell
-rmenu.exe --reindex
-```
-
----
-
-## Modules
-
-`rmenu` supports external modules in two formats:
-
-1. `modules/<name>.rmod` — single-file text module, recommended for distribution.
-2. `modules/<name>/module.toml` + JS entry — directory module, recommended for development.
-
-Modules can contribute:
-
-- providers,
-- commands,
-- item decorations,
-- quick-select keys,
-- input accessories,
-- controlled key hooks.
-
-Module conventions for v1:
-
-- standard local module directory: `modules/` relative to the current working directory;
-- examples shipped in this repository: `modules/calculator.rmod`, `modules/local-scripts.rmod`, `modules/shortcuts.rmod`;
-- module names should be lowercase kebab-case and stable (`local-scripts`, `shortcuts`);
-- commands should use `/module::command` namespacing;
-- capabilities must be minimal and explicitly declared;
-- `.rmod` is the preferred sharing format;
-- module `version` should use semver-like `major.minor.patch` strings and `api_version = 1` for this API generation.
-
-The core remains authoritative over UI, ranking, dedupe, state, execution policy and error isolation.
-
-Quick commands:
-
-```powershell
-rmenu.exe --modules-debug
-```
-
-Runtime commands inside `rmenu`:
-
-```text
-/modules.reload
-/modules.list
-/modules.telemetry.reset
-```
-
-Module discovery can be overridden for development or portable installs:
-
-```powershell
-rmenu.exe --modules-dir .\modules --modules-debug
-```
-
-Resolution order is: `--modules-dir`, `RMENU_MODULES_DIR`, `%APPDATA%\rmenu\modules`, `modules` next to `rmenu.exe`, then cwd `modules` as a development fallback.
-
-Module documentation:
-
-- `CORE_FREEZE_V1.md` — formal core v1 freeze declaration.
-- `MODULES_ARCHITECTURE.md` — core/module boundary and freeze policy.
-- `MODULES_QUICKSTART.md` — install, develop and debug modules quickly.
-- `MODULES_API_SPEC_V1.md` — hooks, ctx, items and restrictions.
-- `RMOD_SPEC_V1.md` — `.rmod` single-file format.
-- `MANIFEST_SPEC_V1.md` — `module.toml` directory format.
-- `MODULES_CAPABILITIES_MATRIX.md` — permissions and enforcement.
-- `MODULES_AUTHORING_GUIDE.md` — module authoring guide.
-- `MODULES_OPERATIONS_GUIDE.md` — operations/debugging guide.
-- `DECISIONS.md` — accepted architecture decisions.
-- `POST_FREEZE_ROADMAP.md` — post-freeze module/product roadmap.
-- `RELEASE_CHECKLIST.md` — maintainer release checklist and artifact spec.
-- `INSTALL.md` — installer/zip install and update guide.
-- `CHANGELOG.md` — release notes.
-- `docs/release/BINARY_SIGNING.md` — binary signing and checksum policy.
+- Use `--data-dir` or `RMENU_DATA_DIR` when running portable/dev layouts.
 
 ---
 
 ## Diagnostics and performance
 
-### Ranking debug
+Ranking debug:
 
 ```powershell
 rmenu.exe --debug-ranking pow
 ```
 
-### Metrics
+Metrics:
 
 ```powershell
 rmenu.exe --metrics
 ```
 
-Output includes:
-
-- `startup_prepare_ms`
-- `time_to_window_visible_ms`
-- `time_to_first_paint_ms`
-- `time_to_input_ready_ms`
-- `search_p95_ms`
-- `dataset_items`
-- `dataset_estimated_bytes`
-- `index_cache_bytes`
-
-### Modules debug
+Modules debug:
 
 ```powershell
 rmenu.exe --modules-debug
@@ -429,17 +762,14 @@ rmenu.exe --modules-debug
 
 Output includes:
 
-- API version
-- loaded modules
-- external descriptors
-- running hosts
-- host status
-- request/error/timeout/restart counters
-- recent host errors
+- loaded modules and descriptors,
+- external hosts,
+- host status,
+- request/error/timeout/restart counters,
+- recent module errors,
+- startup/search/cache timings.
 
-### Minimum performance targets
-
-Current v1 targets on a normal Windows development machine:
+Current v1 performance guardrails on a normal Windows development machine:
 
 | Metric | Target |
 | --- | ---: |
@@ -450,9 +780,7 @@ Current v1 targets on a normal Windows development machine:
 | `search_p95_ms` | <= 10 ms |
 | Provider global budget | <= configured `provider_total_budget_ms` |
 
-These are product guardrails, not hard realtime guarantees. Regressions should be investigated when repeated release-mode measurements exceed the target.
-
-### Reproducible benchmark routine
+Benchmark routine:
 
 ```powershell
 cargo build --release
@@ -463,29 +791,35 @@ cargo build --release
 .\target\release\rmenu.exe --debug-ranking calc
 ```
 
-Baseline measured during Phase 4 verification on a 1108-item dataset:
+---
 
-```text
-startup_prepare_ms: 143
-startup_prepare_ms with --reindex: 567
-time_to_window_visible_ms: 30-31
-time_to_input_ready_ms: 36-37
-search_p95_ms: 4.271-4.276
+## Maintainer release workflow
+
+Release docs:
+
+- `scripts/release-local.ps1` — local maintainer release script.
+- `.github/workflows/release.yml` — GitHub release artifact workflow.
+- `INSTALL.md` — install/update instructions.
+- `CHANGELOG.md` — release notes.
+- `RELEASE_CHECKLIST.md` — release checklist and artifact spec.
+- `docs/release/BINARY_SIGNING.md` — signing/checksum policy.
+
+Local package-only example:
+
+```powershell
+cargo build --release
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\release-local.ps1 -Version 0.4.0 -PackageOnly -SkipValidation -IncludeInstaller
 ```
 
 ---
 
 ## Audits and reports
 
-### Where audits live
+Audit artifacts:
 
-- Unified audit artifacts: `artifacts/audits/`
-- Archived codebase snapshot: `docs/audits/codebase-report-2026-04-22.md`
-- Historical/private planning docs: `docs/historico/private-docs/`
-
-### Latest audit (current repository snapshot)
-
-- `artifacts/audits/audit-20260422-094201.txt`
+- `artifacts/audits/`
+- `docs/audits/codebase-report-2026-04-22.md`
+- `docs/historico/private-docs/`
 
 Generate a new audit:
 
@@ -504,15 +838,23 @@ Optional args:
 
 ## Project structure
 
-- `src/main.rs` - startup orchestration and mode selection
-- `src/ui_win32.rs` - Win32 message loop and rendering
-- `src/ranking.rs` - ranking pipeline and item ordering
-- `src/fuzzy.rs` - fuzzy scoring primitives
-- `src/sources/mod.rs` - history/start-menu/path indexing + cache
-- `src/launcher.rs` - target launch backend
-- `src/settings.rs` - config + CLI parsing
-- `src/modules/` - module runtime, descriptors, IPC, host client, policies and types
-- `src/module_host_main.rs` - external module host process
+```text
+src/main.rs              startup orchestration and mode selection
+src/ui_win32.rs          Win32 message loop and rendering
+src/ranking.rs           ranking pipeline and item ordering
+src/fuzzy.rs             fuzzy scoring primitives
+src/sources/mod.rs       history/start-menu/path indexing + cache
+src/launcher.rs          target launch backend
+src/settings.rs          config + CLI parsing + data dirs
+src/modules/             module runtime, descriptors, IPC, host client, policies and types
+src/module_host_main.rs  external JavaScript module host process
+src/daemon_main.rs       resident daemon, hotkeys, warm launcher, helper lifecycle
+src/updater_main.rs      updater binary
+modules/                 local/example modules and rpacks
+scripts/                 audit/release scripts
+installer/               installer build files
+docs/                    workflow, registry, updater, release docs
+```
 
 ---
 
