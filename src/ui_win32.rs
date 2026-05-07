@@ -1,6 +1,6 @@
 use crate::app_state::{
-    ensure_selection_visible, AppState, LauncherItem, RmodsInstallStatusView, RmodsPendingAction,
-    RmodsUiItem, RtasksInputPriority, RtasksInputStatus,
+    ensure_selection_visible, AppState, LauncherItem, LauncherItemTone, RmodsInstallStatusView,
+    RmodsPendingAction, RmodsUiItem, RtasksInputPriority, RtasksInputStatus,
 };
 use crate::fuzzy::fuzzy_score;
 use crate::launcher::{
@@ -214,6 +214,14 @@ fn blend_color(left: COLORREF, right: COLORREF, right_weight: u32) -> COLORREF {
 
 fn placeholder_text_color(config: &RmenuConfig) -> COLORREF {
     blend_color(config.colors.background, config.colors.foreground, 45)
+}
+
+fn launcher_item_tone_color(tone: LauncherItemTone) -> COLORREF {
+    match tone {
+        LauncherItemTone::Success => COLORREF(0x0090D890),
+        LauncherItemTone::Warning => COLORREF(0x0030B0E0),
+        LauncherItemTone::Danger => COLORREF(0x004050E8),
+    }
 }
 
 fn accessory_text_color(kind: InputAccessoryKind, config: &RmenuConfig) -> COLORREF {
@@ -632,6 +640,7 @@ fn render_rmods_matching_items(app_state: &mut AppState) {
                 crate::app_state::LauncherSource::Direct,
             );
             launcher_item.trailing_badge = Some(status.to_string());
+            launcher_item.trailing_badge_tone = rmods_status_tone(item.status);
             launcher_item.trailing_hint = if item.description.trim().is_empty() {
                 Some("Space mark | F5/Ctrl+R refresh | Ctrl+U updates".to_string())
             } else {
@@ -665,6 +674,37 @@ fn render_rmods_matching_items(app_state: &mut AppState) {
         app_state.selected_index = app_state.matching_items.len().saturating_sub(1);
     }
     ensure_selection_visible(app_state, 10);
+}
+
+fn rmods_badge_tone(item: &LauncherItem) -> Option<LauncherItemTone> {
+    item.trailing_badge_tone.or_else(|| {
+        if item.target.starts_with("rmods:") {
+            rmods_status_label_tone(item.trailing_badge.as_deref()?)
+        } else {
+            None
+        }
+    })
+}
+
+fn rmods_status_label_tone(label: &str) -> Option<LauncherItemTone> {
+    match label {
+        "installed" => Some(LauncherItemTone::Success),
+        "not installed" => Some(LauncherItemTone::Danger),
+        "update available" | "local newer" => Some(LauncherItemTone::Warning),
+        "checksum mismatch" => Some(LauncherItemTone::Danger),
+        _ => None,
+    }
+}
+
+fn rmods_status_tone(status: RmodsInstallStatusView) -> Option<LauncherItemTone> {
+    match status {
+        RmodsInstallStatusView::Installed => Some(LauncherItemTone::Success),
+        RmodsInstallStatusView::NotInstalled => Some(LauncherItemTone::Danger),
+        RmodsInstallStatusView::UpdateAvailable | RmodsInstallStatusView::LocalNewer => {
+            Some(LauncherItemTone::Warning)
+        }
+        RmodsInstallStatusView::ChecksumMismatch => Some(LauncherItemTone::Danger),
+    }
 }
 
 fn rmods_status_label(status: RmodsInstallStatusView) -> &'static str {
@@ -1009,6 +1049,7 @@ fn normalize_quick_select_items(app_state: &mut AppState) {
         item.quick_select_key = None;
         if item.trailing_badge.as_deref() == Some(key.as_str()) {
             item.trailing_badge = None;
+            item.trailing_badge_tone = None;
         }
     }
 }
@@ -1341,7 +1382,16 @@ unsafe extern "system" fn window_proc(
                         draw_text_w(hdc, row.right_x, item_text_y, &row.right_text);
                     }
                     if let Some(chip) = row.chip_text {
+                        let badge_tone = rmods_badge_tone(item);
+                        let previous_color = if let Some(tone) = badge_tone {
+                            SetTextColor(hdc, launcher_item_tone_color(tone))
+                        } else {
+                            COLORREF(0)
+                        };
                         draw_text_w(hdc, row.chip_x.max(left_x + char_w), item_text_y, &chip);
+                        if badge_tone.is_some() {
+                            SetTextColor(hdc, previous_color);
+                        }
                     }
                 }
 
@@ -2139,8 +2189,13 @@ pub fn measure_ui_latencies(
 
 #[cfg(test)]
 mod tests {
-    use super::{compute_row_zones, find_quick_select_index, normalize_quick_select_items};
-    use crate::app_state::{AppState, LauncherItem, LauncherSource};
+    use super::{
+        compute_row_zones, find_quick_select_index, normalize_quick_select_items, rmods_badge_tone,
+        rmods_status_tone,
+    };
+    use crate::app_state::{
+        AppState, LauncherItem, LauncherItemTone, LauncherSource, RmodsInstallStatusView,
+    };
 
     #[test]
     fn quick_select_conflicts_keep_first_visible_item() {
@@ -2159,6 +2214,7 @@ mod tests {
         );
         second.quick_select_key = Some("1".to_string());
         second.trailing_badge = Some("1".to_string());
+        second.trailing_badge_tone = Some(LauncherItemTone::Warning);
 
         let mut state = AppState {
             matching_items: vec![first, second],
@@ -2173,6 +2229,41 @@ mod tests {
         );
         assert_eq!(state.matching_items[1].quick_select_key, None);
         assert_eq!(state.matching_items[1].trailing_badge, None);
+        assert_eq!(state.matching_items[1].trailing_badge_tone, None);
+    }
+
+    #[test]
+    fn rmods_badge_tone_is_derived_from_rmods_badge_text_after_interaction() {
+        let mut item = LauncherItem::new(
+            "[x] calculator 0.1.0".to_string(),
+            "rmods:calculator".to_string(),
+            LauncherSource::Direct,
+        );
+        item.trailing_badge = Some("installed".to_string());
+
+        assert_eq!(rmods_badge_tone(&item), Some(LauncherItemTone::Success));
+
+        item.trailing_badge = Some("not installed".to_string());
+        assert_eq!(rmods_badge_tone(&item), Some(LauncherItemTone::Danger));
+
+        item.trailing_badge = Some("update available".to_string());
+        assert_eq!(rmods_badge_tone(&item), Some(LauncherItemTone::Warning));
+    }
+
+    #[test]
+    fn rmods_status_tones_match_install_state_colors() {
+        assert_eq!(
+            rmods_status_tone(RmodsInstallStatusView::Installed),
+            Some(LauncherItemTone::Success)
+        );
+        assert_eq!(
+            rmods_status_tone(RmodsInstallStatusView::NotInstalled),
+            Some(LauncherItemTone::Danger)
+        );
+        assert_eq!(
+            rmods_status_tone(RmodsInstallStatusView::UpdateAvailable),
+            Some(LauncherItemTone::Warning)
+        );
     }
 
     #[test]

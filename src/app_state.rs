@@ -7,6 +7,13 @@ pub enum LauncherSource {
     Path,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LauncherItemTone {
+    Success,
+    Warning,
+    Danger,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct LauncherItem {
     pub label: String,
@@ -20,6 +27,7 @@ pub struct LauncherItem {
     pub trailing_hint: Option<String>,
     pub quick_select_key: Option<String>,
     pub trailing_badge: Option<String>,
+    pub trailing_badge_tone: Option<LauncherItemTone>,
 }
 
 impl LauncherItem {
@@ -55,6 +63,7 @@ impl LauncherItem {
             trailing_hint: None,
             quick_select_key: None,
             trailing_badge: None,
+            trailing_badge_tone: None,
         }
     }
 }
