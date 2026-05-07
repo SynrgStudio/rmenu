@@ -1,7 +1,7 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-07 08:05
+updated_at: 2026-05-07 08:35
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -2432,3 +2432,32 @@ Blocked:
 Next step:
 
 - If approved: commit/push exact changed files in rMenu and rmods, then validate live `/rmods` companion entries.
+
+## Checkpoint — 2026-05-07 08:35 — T100 completed, companion registry live
+
+Tasks executed:
+
+- Published rMenu v0.3.1 before exposing companion entries in the live registry, so public `/rmods` has parser support for `kind: companion`.
+- Published `C:\rmods` companion registry entries for RSnip and RTasks.
+- GitHub Actions regenerated `registry.json` successfully.
+- Fast-forwarded local `C:\rmods` after the bot registry timestamp commit.
+
+Commits/releases:
+
+- rMenu commit: `f89b219` — `feat: add companion packages to rmods`
+- rMenu release: `https://github.com/SynrgStudio/rmenu/releases/tag/v0.3.1`
+- rmods commit: `a8d1ded` — `feat: add companion registry entries`
+- rmods bot registry commit: `6fe822b`
+
+Validation:
+
+- rMenu release script validation: `cargo fmt`, `cargo test`, `cargo check`, `cargo build --release`, installer build: OK
+- GitHub Release v0.3.1 assets published: installer, zip, SHA256SUMS: OK
+- rmods GitHub Action: success
+- Live registry checked through GitHub API: 13 entries, companions present:
+  - `rsnip` version `0.1.2`, executable `rsnip.exe`
+  - `rtasks` version `0.1.8`, executable `rtasks.exe`
+
+Remaining:
+
+- T101 manual validation: install/test RSnip and RTasks from `/rmods` in the installed 0.3.1 build.
