@@ -1,7 +1,7 @@
 ---
 continuity_session: CONT-2026-05-04-1945-ahk-suite-rmenu-migration
 created_at: 2026-05-04 19:45
-updated_at: 2026-05-07 08:35
+updated_at: 2026-05-07 08:55
 status: active
 goal: Migrar la suite AHK hacia rmenu de forma nativa mediante core primitives, módulos, helpers y daemon futuro
 ---
@@ -2461,3 +2461,19 @@ Validation:
 Remaining:
 
 - T101 manual validation: install/test RSnip and RTasks from `/rmods` in the installed 0.3.1 build.
+
+## Checkpoint — 2026-05-07 08:55 — T101 manual companion validation accepted
+
+User validation:
+
+- User reported everything works perfectly.
+- The real updater detected the v0.3.1 update.
+- `/rmods` companion flow is accepted after publishing the live registry.
+
+Task closed:
+
+- T101 — Manual `/rmods` companion installation validation: done.
+
+Remaining:
+
+- No pending executable tasks in the current companion wave.
