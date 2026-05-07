@@ -96,7 +96,7 @@ C:\rMenuData
 
 The chosen data folder stores modules, companions, config, and state. It is saved for future upgrades and is intentionally preserved on uninstall.
 
-The installer creates Start Menu shortcuts. `Start rMenu daemon when Windows starts` is enabled by default because rMenu is intended to be a resident launcher. The installer can also launch the daemon after install. When the daemon is running, rMenu shows a system tray icon; double-click opens rMenu, right-click opens a menu with Open and Quit. Uninstall removes app binaries and startup registration, but intentionally preserves the selected data root so installed modules, companions, config, and state can be reused by future installs.
+The installer creates one user-facing Start Menu shortcut: `rMenu`. That shortcut talks to the daemon and opens rMenu without exposing helper executables. `Start rMenu daemon when Windows starts` is enabled by default because rMenu is intended to be a resident launcher. The installer can also launch the daemon after install. When the daemon is running, rMenu shows a system tray icon; double-click opens rMenu, right-click opens a menu with Open and Quit. Uninstall removes app binaries and startup registration, but intentionally preserves the selected data root so installed modules, companions, config, and state can be reused by future installs.
 
 ---
 

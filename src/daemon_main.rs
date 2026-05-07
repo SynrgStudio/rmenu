@@ -114,6 +114,7 @@ struct DaemonOptions {
     install_startup: bool,
     uninstall_startup: bool,
     quit: bool,
+    open: bool,
     help: bool,
 }
 
@@ -127,6 +128,7 @@ impl Default for DaemonOptions {
             install_startup: false,
             uninstall_startup: false,
             quit: false,
+            open: false,
             help: false,
         }
     }
@@ -222,6 +224,7 @@ where
             "--install-startup" => options.install_startup = true,
             "--uninstall-startup" => options.uninstall_startup = true,
             "--quit" => options.quit = true,
+            "--open" => options.open = true,
             "-h" | "--help" => options.help = true,
             _ => {}
         }
@@ -372,19 +375,40 @@ fn uninstall_startup() -> Result<(), String> {
     Ok(())
 }
 
-fn request_quit() -> Result<(), String> {
+fn find_daemon_window() -> HWND {
     let class_name = to_wstring(DAEMON_CLASS_NAME);
-    let mut hwnd = unsafe { FindWindowW(PCWSTR(class_name.as_ptr()), PCWSTR::null()) };
-    if hwnd.0 == 0 {
-        hwnd = unsafe {
-            FindWindowExW(
-                HWND_MESSAGE,
-                HWND(0),
-                PCWSTR(class_name.as_ptr()),
-                PCWSTR::null(),
-            )
-        };
+    let hwnd = unsafe { FindWindowW(PCWSTR(class_name.as_ptr()), PCWSTR::null()) };
+    if hwnd.0 != 0 {
+        return hwnd;
     }
+    unsafe {
+        FindWindowExW(
+            HWND_MESSAGE,
+            HWND(0),
+            PCWSTR(class_name.as_ptr()),
+            PCWSTR::null(),
+        )
+    }
+}
+
+fn request_open() -> Result<bool, String> {
+    let hwnd = find_daemon_window();
+    if hwnd.0 == 0 {
+        log_line("open requested but daemon window was not found");
+        return Ok(false);
+    }
+
+    let ok = unsafe { PostMessageW(hwnd, 0x0111, WPARAM(TRAY_MENU_OPEN_ID), LPARAM(0)) };
+    if !ok.as_bool() {
+        return Err("PostMessageW(WM_COMMAND open) failed".to_string());
+    }
+
+    log_line("open requested");
+    Ok(true)
+}
+
+fn request_quit() -> Result<(), String> {
+    let hwnd = find_daemon_window();
     if hwnd.0 == 0 {
         log_line("quit requested but daemon window was not found");
         return Ok(());
@@ -977,6 +1001,12 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
     let mut rtasks_panel_open = false;
     let mut rtasks_panel_restore_hwnd: Option<HWND> = None;
     let mut rmenu_open_count: u64 = 0;
+    if options.open {
+        let hotkey_received_at = Instant::now();
+        rmenu_open_count = rmenu_open_count.saturating_add(1);
+        runtime = show_warm_rmenu(&prepared, runtime, rmenu_open_count, hotkey_received_at);
+        resident_helpers.sync(runtime.external_descriptors());
+    }
     let mut msg = MSG::default();
     loop {
         let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
@@ -1057,7 +1087,7 @@ fn run_daemon(options: DaemonOptions) -> Result<(), String> {
 
 fn print_help() {
     log_line(
-        "usage: rmenu-daemon.exe [--hotkey ctrl+shift+space] [--rmenu PATH] [--modules-dir PATH] [--data-dir PATH] [--install-startup] [--uninstall-startup] [--quit]",
+        "usage: rmenu-daemon.exe [--hotkey ctrl+shift+space] [--rmenu PATH] [--modules-dir PATH] [--data-dir PATH] [--install-startup] [--uninstall-startup] [--quit] [--open]",
     );
 }
 
@@ -1074,6 +1104,8 @@ fn main() {
         install_startup(&options)
     } else if options.quit {
         request_quit()
+    } else if options.open && request_open().unwrap_or(false) {
+        Ok(())
     } else {
         run_daemon(options)
     };
@@ -1101,6 +1133,7 @@ mod tests {
             "--data-dir".to_string(),
             "C:\\rMenuData".to_string(),
             "--install-startup".to_string(),
+            "--open".to_string(),
         ]);
 
         assert_eq!(options.hotkey, "ctrl+space");
@@ -1114,6 +1147,7 @@ mod tests {
         );
         assert_eq!(options.data_dir, Some(PathBuf::from("C:\\rMenuData")));
         assert!(options.install_startup);
+        assert!(options.open);
     }
 
     #[test]

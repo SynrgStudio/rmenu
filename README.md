@@ -115,7 +115,7 @@ Development example from the repository root:
 target\debug\rmenu-daemon.exe --hotkey "ctrl+shift+space" --rmenu "C:\rMenu\target\debug\rmenu.exe" --modules-dir "C:\rMenu\modules"
 ```
 
-`--rmenu` is retained for startup command compatibility. In resident-prewarmed mode the daemon does not spawn `rmenu.exe` for every hotkey press.
+`--rmenu` is retained for startup command compatibility. In resident-prewarmed mode the daemon does not spawn `rmenu.exe` for every hotkey press. `--open` asks an already-running daemon to show rMenu; if no daemon is running, it starts the daemon and opens rMenu once.
 
 Install current daemon command for user startup:
 

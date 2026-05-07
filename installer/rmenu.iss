@@ -53,10 +53,12 @@ Source: "{#RepoRoot}\docs\rmods-registry.md"; DestDir: "{app}\docs"; Flags: igno
 Source: "{#RepoRoot}\docs\update-workflow.md"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
-Name: "{autoprograms}\rMenu"; Filename: "{app}\rmenu.exe"; WorkingDir: "{app}"; IconFilename: "{app}\rmenu.exe"
-Name: "{autoprograms}\rMenu Daemon"; Filename: "{app}\rmenu-daemon.exe"; Parameters: "--data-dir ""{code:GetDataRoot}"""; WorkingDir: "{app}"; IconFilename: "{app}\rmenu.exe"
-Name: "{autoprograms}\rMenu Stop Daemon"; Filename: "{app}\rmenu-daemon.exe"; Parameters: "--quit"; WorkingDir: "{app}"; IconFilename: "{app}\rmenu.exe"
-Name: "{autoprograms}\rMenu Logs"; Filename: "{userappdata}\rmenu"; WorkingDir: "{userappdata}\rmenu"; IconFilename: "{app}\rmenu.exe"
+Name: "{autoprograms}\rMenu"; Filename: "{app}\rmenu-daemon.exe"; Parameters: "--open --hotkey ""ctrl+shift+space"" --rmenu ""{app}\rmenu.exe"" --data-dir ""{code:GetDataRoot}"""; WorkingDir: "{app}"; IconFilename: "{app}\rmenu.exe"
+
+[InstallDelete]
+Type: files; Name: "{autoprograms}\rMenu Daemon.lnk"
+Type: files; Name: "{autoprograms}\rMenu Stop Daemon.lnk"
+Type: files; Name: "{autoprograms}\rMenu Logs.lnk"
 
 [Registry]
 Root: HKCU; Subkey: "Software\SynrgStudio\rMenu"; ValueType: string; ValueName: "DataDir"; ValueData: "{code:GetDataRoot}"
