@@ -215,6 +215,9 @@ function New-ReleasePackage([string]$TargetVersion) {
     Copy-IfExists "modules\calculator.rmod" (Join-Path $stage "module-examples\calculator.rmod")
     Copy-IfExists "modules\local-scripts.rmod" (Join-Path $stage "module-examples\local-scripts.rmod")
     Copy-IfExists "modules\examples\shortcuts.example.rmod" (Join-Path $stage "module-examples\shortcuts.example.rmod")
+    if (Test-Path "modules\timer") {
+      Copy-Item "modules\timer" (Join-Path $stage "module-examples\timer") -Recurse -Force
+    }
 
     $checksumPath = Join-Path $stage "checksums.txt"
     Get-ChildItem $stage -File -Recurse |

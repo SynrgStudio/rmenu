@@ -25,6 +25,7 @@ include = [
     "*_SPEC_V1.md",
     "docs/release/*.md",
     "modules/examples/*.rmod",
+    "modules/timer/**",
     "scripts/*.ps1",
 ]
 

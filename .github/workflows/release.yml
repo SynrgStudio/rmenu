@@ -105,6 +105,9 @@ jobs:
           if (Test-Path "modules\examples\shortcuts.example.rmod") {
             Copy-Item "modules\examples\shortcuts.example.rmod" (Join-Path $stage "module-examples\shortcuts.example.rmod")
           }
+          if (Test-Path "modules\timer") {
+            Copy-Item "modules\timer" (Join-Path $stage "module-examples\timer") -Recurse -Force
+          }
 
           # Do not copy modules/shortcuts.rmod as an active default module; it may contain local user paths.
           # Module examples are packaged under module-examples/ and must be copied into modules/ by the user.
