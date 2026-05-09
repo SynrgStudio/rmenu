@@ -8,6 +8,13 @@ This project uses pragmatic versioning during the `0.x` line. Public module API 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-09
+
+### Fixed
+
+- rMenu now hides immediately and launches selected launcher targets from a worker thread, preventing Windows "Not Responding" hangs when applications such as Blender take over during startup.
+- Daemon test compilation now excludes warm-launch UI code consistently with its Windows UI dependencies.
+
 ## [0.4.0] - 2026-05-07
 
 ### Added
@@ -92,6 +99,7 @@ This project uses pragmatic versioning during the `0.x` line. Public module API 
 
 ---
 
-[Unreleased]: https://github.com/SynrgStudio/rmenu/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/SynrgStudio/rmenu/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/SynrgStudio/rmenu/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SynrgStudio/rmenu/compare/v0.3.2...v0.4.0
 [0.2.0]: https://github.com/SynrgStudio/rmenu/releases/tag/v0.2.0

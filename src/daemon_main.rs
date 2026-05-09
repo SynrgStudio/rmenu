@@ -28,7 +28,9 @@ mod update_check;
 
 use std::env;
 use std::ffi::OsStr;
-use std::fs::{self, OpenOptions};
+#[cfg(not(test))]
+use std::fs;
+use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::os::windows::ffi::OsStrExt;
 #[cfg(not(test))]
@@ -553,6 +555,7 @@ fn stop_ringing_timer_alarm(cli_data_dir: Option<&str>) {
     }
 }
 
+#[cfg(not(test))]
 fn show_warm_rmenu(
     prepared: &PreparedRmenu,
     runtime: modules::ModuleRuntime,

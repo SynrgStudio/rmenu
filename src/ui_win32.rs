@@ -32,7 +32,7 @@ use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Mutex;
-use std::thread::sleep;
+use std::thread::{self, sleep};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use windows::{
     core::PCWSTR,
@@ -53,9 +53,9 @@ use windows::{
                 GetSystemMetrics, GetWindowRect, IsWindow, KillTimer, LoadCursorW, MoveWindow,
                 PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassW, SetForegroundWindow,
                 SetTimer, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, MSG,
-                PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SW_SHOW, WINDOW_EX_STYLE, WM_CHAR, WM_CREATE,
-                WM_DESTROY, WM_KEYDOWN, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_TIMER, WNDCLASSW,
-                WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
+                PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SW_HIDE, SW_SHOW, WINDOW_EX_STYLE, WM_CHAR,
+                WM_CREATE, WM_DESTROY, WM_KEYDOWN, WM_PAINT, WM_QUIT, WM_SYSKEYDOWN, WM_TIMER,
+                WNDCLASSW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
             },
         },
     },
@@ -74,6 +74,7 @@ const INSTALL_START_TIMER_ID: usize = 43;
 const TIMER_COUNTDOWN_REFRESH_ID: usize = 44;
 const WM_INSTALL_PROGRESS: u32 = 0x8000 + 1;
 const WM_INSTALL_DONE: u32 = 0x8000 + 2;
+const WM_LAUNCH_DONE: u32 = 0x8000 + 3;
 const INPUT_PLACEHOLDER_TEXT: &str = concat!("rMenu ", env!("CARGO_PKG_VERSION"));
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -189,6 +190,36 @@ fn request_ui_exit(hwnd: HWND, exit_code: i32) {
 
 fn current_ui_exit_code() -> i32 {
     UI_EXIT_CODE.load(Ordering::SeqCst)
+}
+
+fn launch_target_and_persist(target: String, silent_mode: bool, history_max_items: usize) {
+    if let Err(error) = launch_target(&target) {
+        if !silent_mode {
+            eprintln!("Error launching target '{}': {}", target, error);
+        }
+        return;
+    }
+
+    persist_history_entry(&target, silent_mode, history_max_items);
+}
+
+fn launch_target_after_hiding_window(
+    hwnd: HWND,
+    target: String,
+    silent_mode: bool,
+    history_max_items: usize,
+) {
+    let hwnd_value = hwnd.0;
+    unsafe {
+        ShowWindow(hwnd, SW_HIDE);
+    }
+
+    thread::spawn(move || {
+        launch_target_and_persist(target, silent_mode, history_max_items);
+        unsafe {
+            let _ = PostMessageW(HWND(hwnd_value), WM_LAUNCH_DONE, WPARAM(0), LPARAM(0));
+        }
+    });
 }
 
 fn to_wstring(s: &str) -> Vec<u16> {
@@ -1302,6 +1333,10 @@ unsafe extern "system" fn window_proc(
             }
             LRESULT(0)
         }
+        WM_LAUNCH_DONE => {
+            request_ui_exit(hwnd, 0);
+            LRESULT(0)
+        }
         WM_PAINT => {
             let mut ps = PAINTSTRUCT::default();
             let hdc = BeginPaint(hwnd, &mut ps);
@@ -1672,24 +1707,17 @@ unsafe extern "system" fn window_proc(
                             let selected =
                                 app_state.matching_items[app_state.selected_index].clone();
                             if app_state.launcher_mode {
-                                if let Err(e) = launch_target(&selected.target) {
-                                    if !app_state.silent_mode {
-                                        eprintln!(
-                                            "Error launching target '{}': {}",
-                                            selected.target, e
-                                        );
-                                    }
-                                } else {
-                                    persist_history_entry(
-                                        &selected.target,
-                                        app_state.silent_mode,
-                                        app_state.history_max_items,
-                                    );
-                                }
+                                launch_target_after_hiding_window(
+                                    hwnd,
+                                    selected.target,
+                                    app_state.silent_mode,
+                                    app_state.history_max_items,
+                                );
+                                return LRESULT(0);
                             } else {
                                 println!("{}", selected.label);
+                                request_ui_exit(hwnd, 0);
                             }
-                            request_ui_exit(hwnd, 0);
                         } else {
                             InvalidateRect(hwnd, None, true);
                         }
@@ -1821,38 +1849,24 @@ unsafe extern "system" fn window_proc(
                             let selected =
                                 app_state.matching_items[app_state.selected_index].clone();
                             if app_state.launcher_mode {
-                                if let Err(e) = launch_target(&selected.target) {
-                                    if !app_state.silent_mode {
-                                        eprintln!(
-                                            "Error launching target '{}': {}",
-                                            selected.target, e
-                                        );
-                                    }
-                                } else {
-                                    persist_history_entry(
-                                        &selected.target,
-                                        app_state.silent_mode,
-                                        app_state.history_max_items,
-                                    );
-                                }
+                                launch_target_after_hiding_window(
+                                    hwnd,
+                                    selected.target,
+                                    app_state.silent_mode,
+                                    app_state.history_max_items,
+                                );
+                                return LRESULT(0);
                             } else {
                                 println!("{}", selected.label);
                             }
                         } else if app_state.launcher_mode {
-                            if let Err(e) = launch_target(&app_state.current_input) {
-                                if !app_state.silent_mode {
-                                    eprintln!(
-                                        "Error launching input '{}': {}",
-                                        app_state.current_input, e
-                                    );
-                                }
-                            } else {
-                                persist_history_entry(
-                                    &app_state.current_input,
-                                    app_state.silent_mode,
-                                    app_state.history_max_items,
-                                );
-                            }
+                            launch_target_after_hiding_window(
+                                hwnd,
+                                app_state.current_input.clone(),
+                                app_state.silent_mode,
+                                app_state.history_max_items,
+                            );
+                            return LRESULT(0);
                         } else if app_state.all_items.is_empty() {
                             println!("{}", app_state.current_input);
                         }
@@ -2028,28 +2042,31 @@ unsafe extern "system" fn window_proc(
             } else if w_param.0 == TIMER_COUNTDOWN_REFRESH_ID {
                 if let Ok(config_guard) = CONFIG.lock() {
                     if config_guard.is_some() {
-                        update_timer_countdown_accessory(hwnd, &CmdOptions {
-                            elements_str: None,
-                            prompt: None,
-                            config_path: None,
-                            modules_dir: None,
-                            data_dir: None,
-                            install_companion: None,
-                            silent: false,
-                            debug_ranking: None,
-                            metrics: false,
-                            modules_debug: false,
-                            reindex: false,
-                            layout: None,
-                            cli_width_percent: None,
-                            cli_max_width: None,
-                            cli_height: None,
-                            cli_item_height: None,
-                            cli_x_pos: None,
-                            cli_y_pos: None,
-                            cli_padding: None,
-                            cli_border_width: None,
-                        });
+                        update_timer_countdown_accessory(
+                            hwnd,
+                            &CmdOptions {
+                                elements_str: None,
+                                prompt: None,
+                                config_path: None,
+                                modules_dir: None,
+                                data_dir: None,
+                                install_companion: None,
+                                silent: false,
+                                debug_ranking: None,
+                                metrics: false,
+                                modules_debug: false,
+                                reindex: false,
+                                layout: None,
+                                cli_width_percent: None,
+                                cli_max_width: None,
+                                cli_height: None,
+                                cli_item_height: None,
+                                cli_x_pos: None,
+                                cli_y_pos: None,
+                                cli_padding: None,
+                                cli_border_width: None,
+                            },
+                        );
                     }
                 }
             }
@@ -2115,7 +2132,12 @@ fn stop_ringing_timer_alarm(cmd_options: &CmdOptions) {
     let content = content.trim_start_matches('\u{feff}');
     let is_ringing = serde_json::from_str::<serde_json::Value>(content)
         .ok()
-        .and_then(|state| state.get("state").and_then(|value| value.as_str()).map(str::to_string))
+        .and_then(|state| {
+            state
+                .get("state")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
         .is_some_and(|state| state == "ringing");
     if !is_ringing {
         return;
@@ -2155,7 +2177,11 @@ fn update_timer_countdown_accessory(hwnd: HWND, cmd_options: &CmdOptions) {
     let input_is_empty = APP_STATE
         .lock()
         .ok()
-        .and_then(|guard| guard.as_ref().map(|state| state.current_input.trim().is_empty()))
+        .and_then(|guard| {
+            guard
+                .as_ref()
+                .map(|state| state.current_input.trim().is_empty())
+        })
         .unwrap_or(false);
     if !input_is_empty {
         let mut runtime_guard = MODULE_RUNTIME.lock().unwrap();
@@ -2183,7 +2209,9 @@ fn update_timer_countdown_accessory(hwnd: HWND, cmd_options: &CmdOptions) {
             if !is_running {
                 return None;
             }
-            let deadline = state.get("deadline_epoch_ms").and_then(|value| value.as_u64())?;
+            let deadline = state
+                .get("deadline_epoch_ms")
+                .and_then(|value| value.as_u64())?;
             let now = now_epoch_ms()?;
             if deadline <= now {
                 return None;

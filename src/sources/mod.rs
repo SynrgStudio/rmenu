@@ -88,7 +88,11 @@ fn source_from_cache(value: &str) -> Option<LauncherSource> {
 }
 
 pub fn persist_history_entry(target: &str, silent_mode: bool, max_items: usize) {
-    if target.trim_start().to_ascii_lowercase().starts_with("hidden:") {
+    if target
+        .trim_start()
+        .to_ascii_lowercase()
+        .starts_with("hidden:")
+    {
         return;
     }
 
